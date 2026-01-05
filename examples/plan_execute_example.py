@@ -1,0 +1,75 @@
+"""Example usage of Plan-and-Execute Agent."""
+import sys
+import os
+
+# Add parent directory to path to import modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config import Config
+from agent.plan_execute_agent import PlanExecuteAgent
+from tools.calculator import CalculatorTool
+from tools.file_ops import FileReadTool, FileWriteTool, FileSearchTool
+from tools.web_search import WebSearchTool
+
+
+def main():
+    """Run Plan-and-Execute Agent example."""
+    print("=" * 60)
+    print("Plan-and-Execute Agent Example")
+    print("=" * 60)
+
+    # Validate configuration
+    try:
+        Config.validate()
+    except ValueError as e:
+        print(f"Error: {e}")
+        print("Please set ANTHROPIC_API_KEY in your .env file")
+        return
+
+    # Initialize agent with tools
+    agent = PlanExecuteAgent(
+        api_key=Config.ANTHROPIC_API_KEY,
+        model=Config.MODEL,
+        max_iterations=10,
+        tools=[
+            CalculatorTool(),
+            FileReadTool(),
+            FileWriteTool(),
+            FileSearchTool(),
+            WebSearchTool(),
+        ],
+    )
+
+    # Example 1: Multi-step calculation and file writing
+    print("\n--- Example 1: Multi-step Task ---")
+    result1 = agent.run(
+        "Calculate the sum of 123 + 456 + 789, then calculate the square of the result, "
+        "and save both results to a file called 'calculations.txt'"
+    )
+    print(f"\nFinal Result: {result1}")
+
+    # Example 2: Research and summarization
+    print("\n\n--- Example 2: Research Task ---")
+    result2 = agent.run(
+        "Search for information about 'AI agents', "
+        "summarize the key concepts in 3 bullet points, "
+        "and save the summary to 'ai_agents_summary.txt'"
+    )
+    print(f"\nFinal Result: {result2}")
+
+    # Example 3: Complex multi-tool task
+    print("\n\n--- Example 3: Complex Task ---")
+    result3 = agent.run(
+        "1. Find information about the ReAct paper "
+        "2. Calculate how many years it's been since 2022 "
+        "3. Write a brief summary with both pieces of information to 'react_info.txt'"
+    )
+    print(f"\nFinal Result: {result3}")
+
+    print("\n" + "=" * 60)
+    print("All examples completed!")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
