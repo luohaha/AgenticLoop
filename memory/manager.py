@@ -2,6 +2,8 @@
 from typing import List, Optional, Dict, Any
 import logging
 
+from llm.base import LLMMessage
+
 from .types import MemoryConfig, CompressedMemory, CompressionStrategy
 from .short_term import ShortTermMemory
 from .compressor import WorkingMemoryCompressor
@@ -30,7 +32,7 @@ class MemoryManager:
 
         # Storage for compressed memories and system messages
         self.summaries: List[CompressedMemory] = []
-        self.system_messages: List["LLMMessage"] = []
+        self.system_messages: List[LLMMessage] = []
 
         # State tracking
         self.current_tokens = 0
@@ -38,7 +40,7 @@ class MemoryManager:
         self.last_compression_savings = 0
         self.compression_count = 0
 
-    def add_message(self, message: "LLMMessage", actual_tokens: Dict[str, int] = None) -> None:
+    def add_message(self, message: LLMMessage, actual_tokens: Dict[str, int] = None) -> None:
         """Add a message to memory and trigger compression if needed.
 
         Args:
@@ -85,7 +87,12 @@ class MemoryManager:
                 logger.info(f"Triggering compression: {reason}")
                 self.compress()
 
-    def get_context_for_llm(self) -> List["LLMMessage"]:
+        # Recalculate current tokens to account for messages evicted from short-term memory
+        # Note: compress() already recalculates, so only do this if we didn't compress
+        if not self.was_compressed_last_iteration:
+            self.current_tokens = self._recalculate_current_tokens()
+
+    def get_context_for_llm(self) -> List[LLMMessage]:
         """Get optimized context for LLM call.
 
         Returns:
@@ -195,7 +202,7 @@ class MemoryManager:
 
         return False, None
 
-    def _select_strategy(self, messages: List["LLMMessage"]) -> str:
+    def _select_strategy(self, messages: List[LLMMessage]) -> str:
         """Auto-select compression strategy based on message characteristics.
 
         Args:
@@ -218,7 +225,7 @@ class MemoryManager:
             # Default: sliding window
             return CompressionStrategy.SLIDING_WINDOW
 
-    def _message_has_tool_calls(self, message: "LLMMessage") -> bool:
+    def _message_has_tool_calls(self, message: LLMMessage) -> bool:
         """Check if message contains tool calls.
 
         Args:

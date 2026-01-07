@@ -1,5 +1,6 @@
 """Token counting and cost tracking for memory management."""
 from typing import Dict, Optional
+from llm.base import LLMMessage
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class TokenTracker:
         self.compression_savings = 0  # Tokens saved through compression
         self.compression_cost = 0  # Tokens spent on compression
 
-    def count_message_tokens(self, message: "LLMMessage", provider: str, model: str) -> int:
+    def count_message_tokens(self, message: LLMMessage, provider: str, model: str) -> int:
         """Count tokens in a message.
 
         Args:

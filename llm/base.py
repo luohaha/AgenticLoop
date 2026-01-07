@@ -17,6 +17,7 @@ class LLMResponse:
     content: Any  # Response content (text or content blocks)
     stop_reason: str  # "end_turn", "tool_use", "max_tokens", etc.
     raw_response: Any  # Original response object for provider-specific handling
+    usage: Optional[Dict[str, int]] = None  # Token usage: {"input_tokens": int, "output_tokens": int}
 
 
 @dataclass

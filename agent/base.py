@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from .tool_executor import ToolExecutor
 from tools.base import BaseTool
-from llm import BaseLLM, LLMMessage, LLMResponse
+from llm import BaseLLM, LLMMessage, LLMResponse, ToolResult
 from memory import MemoryManager, MemoryConfig
 
 
@@ -73,3 +73,107 @@ class BaseAgent(ABC):
             Extracted text
         """
         return self.llm.extract_text(response)
+
+    def _react_loop(
+        self,
+        messages: List[LLMMessage],
+        tools: List,
+        max_iterations: int,
+        use_memory: bool = True,
+        save_to_memory: bool = True,
+        verbose: bool = True
+    ) -> str:
+        """Execute a ReAct (Reasoning + Acting) loop.
+
+        This is a generic ReAct loop implementation that can be used by different agent types.
+        It supports both global memory-based context (for main agent loop) and local message
+        lists (for mini-loops within plan execution).
+
+        Args:
+            messages: Initial message list (ignored if use_memory=True)
+            tools: List of available tool schemas
+            max_iterations: Maximum number of loop iterations
+            use_memory: If True, use self.memory for context; if False, use local messages list
+            save_to_memory: If True, save messages to self.memory (only when use_memory=True)
+            verbose: If True, print iteration and tool call information
+
+        Returns:
+            Final answer as a string
+        """
+        for iteration in range(max_iterations):
+            if verbose:
+                print(f"\n--- Iteration {iteration + 1} ---")
+
+            # Get context (either from memory or local messages)
+            if use_memory:
+                context = self.memory.get_context_for_llm()
+            else:
+                context = messages
+
+            # Call LLM with tools
+            response = self._call_llm(messages=context, tools=tools)
+
+            # Save assistant response
+            assistant_msg = LLMMessage(role="assistant", content=response.content)
+            if use_memory:
+                if save_to_memory:
+                    # Extract actual token usage from response
+                    actual_tokens = None
+                    if response.usage:
+                        actual_tokens = {
+                            "input": response.usage.get("input_tokens", 0),
+                            "output": response.usage.get("output_tokens", 0)
+                        }
+                    self.memory.add_message(assistant_msg, actual_tokens=actual_tokens)
+
+                    # Show compression info if it happened
+                    if verbose and self.memory.was_compressed_last_iteration:
+                        print(f"[Memory compressed: saved {self.memory.last_compression_savings} tokens]")
+            else:
+                # For local messages (mini-loop), still track token usage
+                if response.usage:
+                    self.memory.token_tracker.add_input_tokens(response.usage.get("input_tokens", 0))
+                    self.memory.token_tracker.add_output_tokens(response.usage.get("output_tokens", 0))
+                messages.append(assistant_msg)
+
+            # Check if we're done (no tool calls)
+            if response.stop_reason == "end_turn":
+                final_answer = self._extract_text(response)
+                if verbose:
+                    print(f"\nFinal answer received.")
+                return final_answer
+
+            # Execute tool calls
+            if response.stop_reason == "tool_use":
+                tool_calls = self.llm.extract_tool_calls(response)
+
+                if not tool_calls:
+                    # No tool calls found, return response
+                    final_answer = self._extract_text(response)
+                    return final_answer if final_answer else "No response generated."
+
+                # Execute each tool call
+                tool_results = []
+                for tc in tool_calls:
+                    if verbose:
+                        print(f"Tool call: {tc.name}")
+                        print(f"Input: {tc.arguments}")
+
+                    result = self.tool_executor.execute_tool_call(tc.name, tc.arguments)
+
+                    if verbose:
+                        print(f"Result: {result[:200]}...")  # Print first 200 chars
+
+                    tool_results.append(ToolResult(
+                        tool_call_id=tc.id,
+                        content=result
+                    ))
+
+                # Format tool results and add to context
+                result_message = self.llm.format_tool_results(tool_results)
+                if use_memory and save_to_memory:
+                    self.memory.add_message(result_message)
+                else:
+                    messages.append(result_message)
+
+        return "Max iterations reached without completion."

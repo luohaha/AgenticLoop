@@ -140,11 +140,20 @@ class OpenAILLM(BaseLLM):
         else:
             stop_reason = finish_reason
 
+        # Extract token usage
+        usage_dict = None
+        if hasattr(response, 'usage') and response.usage:
+            usage_dict = {
+                "input_tokens": response.usage.prompt_tokens,
+                "output_tokens": response.usage.completion_tokens
+            }
+
         # Convert to unified format
         return LLMResponse(
             content=response.choices[0].message,
             stop_reason=stop_reason,
-            raw_response=response
+            raw_response=response,
+            usage=usage_dict
         )
 
     def extract_text(self, response: LLMResponse) -> str:

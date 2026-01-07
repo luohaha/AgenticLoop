@@ -37,7 +37,7 @@ def create_llm(provider: str, api_key: str, model: str, **kwargs) -> BaseLLM:
 
 __all__ = [
     "BaseLLM",
-    "LLMMessage",
+    LLMMessage,
     "LLMResponse",
     "ToolCall",
     "ToolResult",

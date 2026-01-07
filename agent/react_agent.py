@@ -1,5 +1,5 @@
 """ReAct (Reasoning + Acting) agent implementation."""
-from llm import LLMMessage, ToolResult
+from llm import LLMMessage
 
 from .base import BaseAgent
 
@@ -32,66 +32,26 @@ When you have enough information, provide your final answer directly without usi
 
         tools = self.tool_executor.get_tool_schemas()
 
-        for iteration in range(self.max_iterations):
-            print(f"\n--- Iteration {iteration + 1} ---")
-
-            # Get optimized context from memory
-            messages = self.memory.get_context_for_llm()
-
-            # Call LLM with tools
-            response = self._call_llm(messages=messages, tools=tools)
-
-            # Add assistant response to memory (auto-compression if needed)
-            self.memory.add_message(LLMMessage(role="assistant", content=response.content))
-
-            # Show compression info if it happened
-            if self.memory.was_compressed_last_iteration:
-                print(f"[Memory compressed: saved {self.memory.last_compression_savings} tokens]")
-
-            # Check if we're done (no tool calls)
-            if response.stop_reason == "end_turn":
-                final_answer = self._extract_text(response)
-                print(f"\nFinal answer received.")
-                self._print_memory_stats()
-                return final_answer
-
-            # Execute tool calls and add results
-            if response.stop_reason == "tool_use":
-                # Extract tool calls using LLM abstraction
-                tool_calls = self.llm.extract_tool_calls(response)
-
-                if not tool_calls:
-                    # No tool calls found, end loop
-                    final_answer = self._extract_text(response)
-                    self._print_memory_stats()
-                    return final_answer if final_answer else "No response generated."
-
-                # Execute each tool call
-                tool_results = []
-                for tc in tool_calls:
-                    print(f"Tool call: {tc.name}")
-                    print(f"Input: {tc.arguments}")
-
-                    result = self.tool_executor.execute_tool_call(tc.name, tc.arguments)
-                    print(f"Result: {result[:200]}...")  # Print first 200 chars
-
-                    tool_results.append(ToolResult(
-                        tool_call_id=tc.id,
-                        content=result
-                    ))
-
-                # Format tool results and add to memory
-                result_message = self.llm.format_tool_results(tool_results)
-                self.memory.add_message(result_message)
+        # Use the generic ReAct loop implementation
+        result = self._react_loop(
+            messages=[],  # Not used when use_memory=True
+            tools=tools,
+            max_iterations=self.max_iterations,
+            use_memory=True,
+            save_to_memory=True,
+            verbose=True
+        )
 
         self._print_memory_stats()
-        return "Max iterations reached without completion."
+        return result
 
     def _print_memory_stats(self):
         """Print memory usage statistics."""
         stats = self.memory.get_stats()
+        total_used = stats['total_input_tokens'] + stats['total_output_tokens']
         print("\n--- Memory Statistics ---")
-        print(f"Total tokens: {stats['current_tokens']}")
+        print(f"Total used: {total_used} tokens (Input: {stats['total_input_tokens']}, Output: {stats['total_output_tokens']})")
+        print(f"Current context: {stats['current_tokens']} tokens")
         print(f"Compressions: {stats['compression_count']}")
         print(f"Net savings: {stats['net_savings']} tokens")
         print(f"Total cost: ${stats['total_cost']:.4f}")

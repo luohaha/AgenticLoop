@@ -1,7 +1,7 @@
 """Short-term memory management with fixed-size window."""
 from typing import List
 from collections import deque
-
+from llm.base import LLMMessage
 
 class ShortTermMemory:
     """Manages recent messages in a fixed-size sliding window."""
@@ -15,7 +15,7 @@ class ShortTermMemory:
         self.max_size = max_size
         self.messages = deque(maxlen=max_size)
 
-    def add_message(self, message: "LLMMessage") -> None:
+    def add_message(self, message: LLMMessage) -> None:
         """Add a message to short-term memory.
 
         Automatically evicts oldest message if at capacity.
@@ -25,7 +25,7 @@ class ShortTermMemory:
         """
         self.messages.append(message)
 
-    def get_messages(self) -> List["LLMMessage"]:
+    def get_messages(self) -> List[LLMMessage]:
         """Get all messages in short-term memory.
 
         Returns:
@@ -33,7 +33,7 @@ class ShortTermMemory:
         """
         return list(self.messages)
 
-    def get_recent(self, count: int) -> List["LLMMessage"]:
+    def get_recent(self, count: int) -> List[LLMMessage]:
         """Get the N most recent messages.
 
         Args:
@@ -46,7 +46,7 @@ class ShortTermMemory:
             return list(self.messages)
         return list(self.messages)[-count:]
 
-    def clear(self) -> List["LLMMessage"]:
+    def clear(self) -> List[LLMMessage]:
         """Clear all messages and return them.
 
         Returns:
@@ -72,7 +72,7 @@ class ShortTermMemory:
         """
         return len(self.messages)
 
-    def peek_oldest(self) -> "LLMMessage":
+    def peek_oldest(self) -> LLMMessage:
         """Peek at the oldest message without removing it.
 
         Returns:
@@ -80,7 +80,7 @@ class ShortTermMemory:
         """
         return self.messages[0] if self.messages else None
 
-    def peek_newest(self) -> "LLMMessage":
+    def peek_newest(self) -> LLMMessage:
         """Peek at the newest message without removing it.
 
         Returns:

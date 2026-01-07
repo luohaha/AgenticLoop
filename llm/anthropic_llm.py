@@ -94,16 +94,22 @@ class AnthropicLLM(BaseLLM):
         # Make API call with retry logic
         response = self._make_api_call(**call_params)
 
-        # Print token usage
+        # Extract token usage
+        usage_dict = None
         if hasattr(response, 'usage'):
             usage = response.usage
+            usage_dict = {
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens
+            }
             print(f"\n📊 Token Usage: Input={usage.input_tokens}, Output={usage.output_tokens}, Total={usage.input_tokens + usage.output_tokens}")
 
         # Convert to unified format
         return LLMResponse(
             content=response.content,
             stop_reason=response.stop_reason,
-            raw_response=response
+            raw_response=response,
+            usage=usage_dict
         )
 
     def extract_text(self, response: LLMResponse) -> str:

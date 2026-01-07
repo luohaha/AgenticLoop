@@ -1,5 +1,6 @@
 """Memory compression using LLM-based summarization."""
 from typing import List, Tuple
+from llm.base import LLMMessage
 import logging
 
 from .types import CompressedMemory, MemoryConfig, CompressionStrategy
@@ -35,7 +36,7 @@ Provide a concise but comprehensive summary that captures the essential informat
 
     def compress(
         self,
-        messages: List["LLMMessage"],
+        messages: List[LLMMessage],
         strategy: str = CompressionStrategy.SLIDING_WINDOW,
         target_tokens: int = None,
     ) -> CompressedMemory:
@@ -69,7 +70,7 @@ Provide a concise but comprehensive summary that captures the essential informat
             return self._compress_sliding_window(messages, target_tokens)
 
     def _compress_sliding_window(
-        self, messages: List["LLMMessage"], target_tokens: int
+        self, messages: List[LLMMessage], target_tokens: int
     ) -> CompressedMemory:
         """Compress using sliding window strategy.
 
@@ -129,7 +130,7 @@ Provide a concise but comprehensive summary that captures the essential informat
             )
 
     def _compress_selective(
-        self, messages: List["LLMMessage"], target_tokens: int
+        self, messages: List[LLMMessage], target_tokens: int
     ) -> CompressedMemory:
         """Compress using selective preservation strategy.
 
@@ -207,7 +208,7 @@ Provide a concise but comprehensive summary that captures the essential informat
             metadata={"strategy": "selective", "preserved_count": len(preserved)},
         )
 
-    def _compress_deletion(self, messages: List["LLMMessage"]) -> CompressedMemory:
+    def _compress_deletion(self, messages: List[LLMMessage]) -> CompressedMemory:
         """Simple deletion strategy - no compression, just drop old messages.
 
         Args:
@@ -229,8 +230,8 @@ Provide a concise but comprehensive summary that captures the essential informat
         )
 
     def _separate_messages(
-        self, messages: List["LLMMessage"]
-    ) -> Tuple[List["LLMMessage"], List["LLMMessage"]]:
+        self, messages: List[LLMMessage]
+    ) -> Tuple[List[LLMMessage], List[LLMMessage]]:
         """Separate messages into preserved and compressible.
 
         Args:
@@ -250,7 +251,7 @@ Provide a concise but comprehensive summary that captures the essential informat
 
         return preserved, to_compress
 
-    def _should_preserve(self, message: "LLMMessage") -> bool:
+    def _should_preserve(self, message: LLMMessage) -> bool:
         """Check if message should be preserved verbatim.
 
         Args:
@@ -274,7 +275,7 @@ Provide a concise but comprehensive summary that captures the essential informat
 
         return False
 
-    def _format_messages_for_summary(self, messages: List["LLMMessage"]) -> str:
+    def _format_messages_for_summary(self, messages: List[LLMMessage]) -> str:
         """Format messages for inclusion in summary prompt.
 
         Args:
@@ -291,7 +292,7 @@ Provide a concise but comprehensive summary that captures the essential informat
 
         return "\n\n".join(formatted)
 
-    def _extract_text_content(self, message: "LLMMessage") -> str:
+    def _extract_text_content(self, message: LLMMessage) -> str:
         """Extract text content from message.
 
         Args:
@@ -318,7 +319,7 @@ Provide a concise but comprehensive summary that captures the essential informat
         else:
             return str(content)
 
-    def _estimate_tokens(self, messages: List["LLMMessage"]) -> int:
+    def _estimate_tokens(self, messages: List[LLMMessage]) -> int:
         """Estimate token count for messages.
 
         Args:

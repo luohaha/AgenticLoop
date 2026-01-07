@@ -192,10 +192,20 @@ class GeminiLLM(BaseLLM):
             else:
                 stop_reason = "end_turn"
 
+            # Extract token usage
+            usage_dict = None
+            if hasattr(response, 'usage_metadata'):
+                usage = response.usage_metadata
+                usage_dict = {
+                    "input_tokens": usage.prompt_token_count,
+                    "output_tokens": usage.candidates_token_count
+                }
+
             return LLMResponse(
                 content=response,
                 stop_reason=stop_reason,
-                raw_response=response
+                raw_response=response,
+                usage=usage_dict
             )
 
         except Exception as e:
