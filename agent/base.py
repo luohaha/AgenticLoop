@@ -3,7 +3,9 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from .tool_executor import ToolExecutor
+from .todo import TodoList
 from tools.base import BaseTool
+from tools.todo import TodoTool
 from llm import BaseLLM, LLMMessage, LLMResponse, ToolResult
 from memory import MemoryManager, MemoryConfig
 from utils import get_logger
@@ -20,6 +22,7 @@ class BaseAgent(ABC):
         max_iterations: int = 10,
         tools: List[BaseTool] = None,
         memory_config: Optional[MemoryConfig] = None,
+        enable_todo: bool = True,
     ):
         """Initialize the agent.
 
@@ -28,10 +31,25 @@ class BaseAgent(ABC):
             max_iterations: Maximum number of agent loop iterations
             tools: List of tools available to the agent
             memory_config: Optional memory configuration (None = use defaults)
+            enable_todo: Whether to enable todo list management (default: True)
         """
         self.llm = llm
         self.max_iterations = max_iterations
-        self.tool_executor = ToolExecutor(tools or [])
+
+        # Initialize todo list system
+        self.todo_list = TodoList()
+
+        # Add todo tool to the tools list if enabled
+        if tools is None:
+            tools = []
+        else:
+            tools = list(tools)  # Make a copy to avoid modifying original
+
+        if enable_todo:
+            todo_tool = TodoTool(self.todo_list)
+            tools.append(todo_tool)
+
+        self.tool_executor = ToolExecutor(tools)
 
         # Initialize memory manager
         if memory_config is None:

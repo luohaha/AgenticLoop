@@ -29,6 +29,9 @@ class Config:
 
     # Tool Configuration
     ENABLE_SHELL = os.getenv("ENABLE_SHELL", "false").lower() == "true"
+    ENABLE_TODO_SYSTEM = os.getenv("ENABLE_TODO_SYSTEM", "true").lower() == "true"
+    ENABLE_ADVANCED_TOOLS = os.getenv("ENABLE_ADVANCED_TOOLS", "true").lower() == "true"
+    ENABLE_CONTEXT_INJECTION = os.getenv("ENABLE_CONTEXT_INJECTION", "true").lower() == "true"
 
     # Retry Configuration
     RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))

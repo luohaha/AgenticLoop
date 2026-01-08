@@ -4,40 +4,102 @@ import re
 
 from llm import LLMMessage
 from .base import BaseAgent
+from .context import format_context_prompt
 
 
 class PlanExecuteAgent(BaseAgent):
     """Agent using Plan-and-Execute pattern."""
 
-    PLANNER_PROMPT = """You are a planning assistant. Given a task, create a step-by-step plan.
+    PLANNER_PROMPT = """<role>
+You are a planning expert who creates clear, actionable step-by-step plans for complex tasks.
+</role>
 
-Output your plan as a numbered list of steps. Each step should be clear and actionable.
-Do not execute the plan, just create it.
+<instructions>
+Given a task, create a detailed plan with numbered steps.
 
-Task: {task}
+IMPORTANT RULES:
+- Each step must be clear and actionable
+- Break complex operations into smaller sub-steps
+- Consider dependencies between steps
+- Be specific about what tools or operations are needed
+- Do NOT execute the plan, only create it
+
+OUTPUT FORMAT:
+Return ONLY a numbered list of steps (e.g., "1. Step description")
+</instructions>
+
+<task>
+{task}
+</task>
+
+<good_example>
+Task: Analyze Python codebase for security issues
+Plan:
+1. Use glob_files to find all Python files in the project
+2. Use grep_content to search for common security patterns (eval, exec, pickle)
+3. Read flagged files to analyze context
+4. Compile findings into security report
+</good_example>
 
 Plan:"""
 
-    EXECUTOR_PROMPT = """You are executing step {step_num} of a plan: {step}
+    EXECUTOR_PROMPT = """<role>
+You are executing a specific step of a larger plan. Focus only on completing this step.
+</role>
 
-Previous steps and results:
+<current_step>
+Step {step_num}: {step}
+</current_step>
+
+<previous_context>
 {history}
+</previous_context>
 
-Use available tools to complete this specific step. When done, provide a brief summary of what you accomplished."""
+<instructions>
+IMPORTANT RULES:
+- Focus ONLY on completing the current step
+- Use the most efficient tools available
+- Use grep_content and glob_files for file operations when possible
+- Provide a concise summary of what you accomplished when done
 
-    SYNTHESIZER_PROMPT = """You have completed a multi-step plan. Here are the results:
+TOOL GUIDELINES:
+- glob_files: Fast file pattern matching
+- grep_content: Search file contents efficiently
+- file_read: Only when you need full file contents
+- edit_file: For targeted edits
 
+When you complete the step, provide a brief summary of your results.
+</instructions>"""
+
+    SYNTHESIZER_PROMPT = """<role>
+You are synthesizing results from a multi-step plan execution into a final answer.
+</role>
+
+<original_task>
+{task}
+</original_task>
+
+<execution_results>
 {results}
+</execution_results>
 
-Original task: {task}
+<instructions>
+IMPORTANT RULES:
+- Review all step results carefully
+- Provide a comprehensive answer to the original task
+- Highlight key findings or outputs
+- Be concise but complete
+- If any steps failed, mention it in your answer
 
-Provide a final answer to the user's original task based on these results."""
+Provide your final answer to the user based on the execution results above.
+</instructions>"""
 
-    def run(self, task: str) -> str:
+    def run(self, task: str, enable_context: bool = True) -> str:
         """Execute Plan-and-Execute loop.
 
         Args:
             task: The task to complete
+            enable_context: Whether to inject environment context (default: True)
 
         Returns:
             Final answer as a string
@@ -46,7 +108,7 @@ Provide a final answer to the user's original task based on these results."""
         print("\n" + "=" * 60)
         print("PHASE 1: PLANNING")
         print("=" * 60)
-        plan = self._create_plan(task)
+        plan = self._create_plan(task, enable_context=enable_context)
         print(f"\n{plan}")
 
         # Phase 2: Execute each step
@@ -87,10 +149,28 @@ Provide a final answer to the user's original task based on these results."""
         print(f"Net savings: {stats['net_savings']} tokens")
         print(f"Total cost: ${stats['total_cost']:.4f}")
 
-    def _create_plan(self, task: str) -> str:
-        """Generate a plan without using tools."""
+    def _create_plan(self, task: str, enable_context: bool = True) -> str:
+        """Generate a plan without using tools.
+
+        Args:
+            task: The task to plan
+            enable_context: Whether to inject environment context
+
+        Returns:
+            Generated plan as string
+        """
+        # Build system message with optional context
+        system_content = "You are a planning expert. Create clear, actionable plans."
+        if enable_context:
+            try:
+                context = format_context_prompt()
+                system_content = context + "\n" + system_content
+            except Exception:
+                # If context gathering fails, continue without it
+                pass
+
         messages = [
-            LLMMessage(role="system", content="You are a planning expert. Create clear, actionable plans."),
+            LLMMessage(role="system", content=system_content),
             LLMMessage(role="user", content=self.PLANNER_PROMPT.format(task=task))
         ]
         response = self._call_llm(messages=messages)

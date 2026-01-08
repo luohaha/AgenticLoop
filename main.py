@@ -9,6 +9,7 @@ from tools.file_ops import FileReadTool, FileWriteTool, FileSearchTool
 from tools.calculator import CalculatorTool
 from tools.shell import ShellTool
 from tools.web_search import WebSearchTool
+from tools.advanced_file_ops import GlobTool, GrepTool, EditTool
 from utils import setup_logger, get_log_file_path
 
 
@@ -22,7 +23,7 @@ def create_agent(mode: str = "react", enable_shell: bool = False):
     Returns:
         Configured agent instance
     """
-    # Initialize tools
+    # Initialize base tools
     tools = [
         FileReadTool(),
         FileWriteTool(),
@@ -31,7 +32,16 @@ def create_agent(mode: str = "react", enable_shell: bool = False):
         WebSearchTool(),
     ]
 
-    if enable_shell:
+    # Add advanced file operation tools if enabled
+    if Config.ENABLE_ADVANCED_TOOLS:
+        tools.extend([
+            GlobTool(),
+            GrepTool(),
+            EditTool(),
+        ])
+        print("✨ Advanced file tools enabled (Glob, Grep, Edit)")
+
+    if enable_shell or Config.ENABLE_SHELL:
         print("⚠️  Warning: Shell tool enabled - use with caution!")
         tools.append(ShellTool())
 
@@ -56,6 +66,7 @@ def create_agent(mode: str = "react", enable_shell: bool = False):
         llm=llm,
         max_iterations=Config.MAX_ITERATIONS,
         tools=tools,
+        enable_todo=Config.ENABLE_TODO_SYSTEM,
     )
 
 
@@ -114,7 +125,7 @@ def main():
     print(f"{'=' * 60}")
 
     agent = create_agent(args.mode, args.enable_shell)
-    result = agent.run(task)
+    result = agent.run(task, enable_context=Config.ENABLE_CONTEXT_INJECTION)
 
     print(f"\n{'=' * 60}")
     print("FINAL ANSWER:")
