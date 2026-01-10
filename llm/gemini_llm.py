@@ -102,10 +102,35 @@ class GeminiLLM(BaseLLM):
             if msg.role == "system":
                 system_instruction = msg.content
             elif msg.role == "user":
-                gemini_messages.append({
-                    "role": "user",
-                    "parts": [{"text": str(msg.content)}]
-                })
+                # Check if this is a function response (structured content)
+                if isinstance(msg.content, list) and msg.content and isinstance(msg.content[0], dict):
+                    # Check if it's function responses
+                    if msg.content[0].get("type") == "function_response":
+                        # Convert to Gemini function_response parts
+                        parts = []
+                        for func_resp in msg.content:
+                            parts.append({
+                                "function_response": {
+                                    "name": func_resp["name"],
+                                    "response": func_resp["response"]
+                                }
+                            })
+                        gemini_messages.append({
+                            "role": "user",
+                            "parts": parts
+                        })
+                    else:
+                        # Regular text message
+                        gemini_messages.append({
+                            "role": "user",
+                            "parts": [{"text": str(msg.content)}]
+                        })
+                else:
+                    # Regular text message
+                    gemini_messages.append({
+                        "role": "user",
+                        "parts": [{"text": str(msg.content)}]
+                    })
             elif msg.role == "assistant":
                 # Handle assistant messages
                 if isinstance(msg.content, str):
@@ -114,16 +139,44 @@ class GeminiLLM(BaseLLM):
                         "parts": [{"text": msg.content}]
                     })
                 else:
-                    # Handle content blocks
+                    # Handle raw Gemini response or content blocks
                     parts = []
-                    for block in msg.content:
-                        # Safely check if block has text
+
+                    # Check if this is a raw Gemini response object
+                    if hasattr(msg.content, "candidates"):
+                        # Extract parts from the raw response
                         try:
-                            if hasattr(block, "text") and block.text:
-                                parts.append({"text": block.text})
-                        except (ValueError, AttributeError):
-                            # Skip blocks that aren't text (e.g., function_call)
+                            for candidate in msg.content.candidates:
+                                if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
+                                    for part in candidate.content.parts:
+                                        # Handle text parts
+                                        if hasattr(part, "text") and part.text:
+                                            parts.append({"text": part.text})
+                                        # Handle function_call parts
+                                        elif hasattr(part, "function_call"):
+                                            fc = part.function_call
+                                            # Convert args to regular dict
+                                            args_dict = {}
+                                            if hasattr(fc, "args"):
+                                                for key, value in fc.args.items():
+                                                    args_dict[key] = value
+                                            parts.append({
+                                                "function_call": {
+                                                    "name": fc.name,
+                                                    "args": args_dict
+                                                }
+                                            })
+                        except (ValueError, AttributeError) as e:
                             pass
+                    else:
+                        # Handle content blocks (list format)
+                        for block in msg.content:
+                            try:
+                                if hasattr(block, "text") and block.text:
+                                    parts.append({"text": block.text})
+                            except (ValueError, AttributeError):
+                                pass
+
                     if parts:
                         gemini_messages.append({
                             "role": "model",
@@ -269,16 +322,22 @@ class GeminiLLM(BaseLLM):
             results: List of tool results
 
         Returns:
-            LLMMessage with formatted results
+            LLMMessage with formatted results as structured function responses
         """
-        # Gemini expects tool results in a specific format
-        # For simplicity, we'll format as text
-        combined_content = "\n\n".join([
-            f"Tool result: {result.content}"
-            for result in results
-        ])
+        # Gemini expects function_response parts
+        # Return structured content that will be converted properly
+        function_responses = []
+        for result in results:
+            # Extract function name from tool_call_id (format: "call_function_name")
+            function_name = result.tool_call_id.replace("call_", "", 1)
 
-        return LLMMessage(role="user", content=combined_content)
+            function_responses.append({
+                "type": "function_response",
+                "name": function_name,
+                "response": {"result": result.content}
+            })
+
+        return LLMMessage(role="user", content=function_responses)
 
     @property
     def supports_tools(self) -> bool:
