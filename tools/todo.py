@@ -95,6 +95,10 @@ EXAMPLES:
             Result message
         """
         try:
+            # Convert index to int if it's a float (LLM may pass 1.0 instead of 1)
+            if isinstance(index, float):
+                index = int(index)
+
             if operation == "add":
                 if not content or not activeForm:
                     return "Error: Both 'content' and 'activeForm' are required for add operation"
