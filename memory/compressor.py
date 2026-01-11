@@ -255,8 +255,8 @@ Provide a concise but comprehensive summary that captures the essential informat
                 preserve_indices.add(i)
 
         # Step 2: Apply selective preservation strategy (keep recent N messages)
-        # Preserve last (short_term_message_count / 2) messages by default (sliding window approach)
-        preserve_count = min(self.config.short_term_message_count / 2, len(messages))
+        # Preserve last short_term_min_message_count messages by default (sliding window approach)
+        preserve_count = min(self.config.short_term_min_message_count, len(messages))
         for i in range(len(messages) - preserve_count, len(messages)):
             if i >= 0:
                 preserve_indices.add(i)

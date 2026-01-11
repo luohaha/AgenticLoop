@@ -15,6 +15,7 @@ class MemoryConfig:
 
     # Memory windows
     short_term_message_count: int = 100  # Keep last N messages in short-term memory
+    short_term_min_message_count: int = 5  # Keep at least N messages in short-term memory
 
     # Compression settings
     compression_ratio: float = 0.3  # Target 30% of original size
