@@ -1,4 +1,7 @@
 """Interactive multi-turn conversation mode for the agent."""
+from prompt_toolkit import prompt
+from prompt_toolkit.styles import Style
+
 from config import Config
 from utils import get_log_file_path, terminal_ui
 
@@ -27,13 +30,20 @@ def run_interactive_mode(agent, mode: str):
     terminal_ui.console.print("\n[bold green]Interactive mode started. Type your message or use commands.[/bold green]")
     terminal_ui.console.print("[dim]Tip: Use /help to see available commands[/dim]\n")
 
+    # Define prompt style for better visual feedback
+    prompt_style = Style.from_dict({
+        'prompt': '#00ffff bold',  # Cyan bold for "You:"
+    })
+
     conversation_count = 0
 
     while True:
         try:
-            # Get user input
-            terminal_ui.console.print("[bold cyan]You:[/bold cyan] ", end="")
-            user_input = input().strip()
+            # Get user input using prompt_toolkit for better Unicode support
+            user_input = prompt(
+                [('class:prompt', 'You: ')],
+                style=prompt_style
+            ).strip()
 
             # Handle empty input
             if not user_input:

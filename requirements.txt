@@ -2,6 +2,7 @@
 python-dotenv>=1.0.0
 ddgs>=1.0.0
 rich>=13.0.0  # For beautiful terminal output
+prompt_toolkit>=3.0.0  # For advanced terminal input with Unicode support
 
 # LLM Providers (install the one(s) you need)
 anthropic>=0.39.0
