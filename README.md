@@ -1,56 +1,13 @@
 # Agentic Loop
 
-A Python agentic loop system supporting both **ReAct** and **Plan-and-Execute** modes, with intelligent memory management and support for multiple LLM providers (Anthropic Claude, OpenAI GPT, Google Gemini).
-
-## Features
-
-- 🤖 **Two Agent Modes**:
-  - **ReAct**: Reasoning-Acting loop, ideal for interactive problem-solving
-  - **Plan-and-Execute**: Planning-Execution-Synthesis, perfect for complex multi-step tasks
-
-- 🧠 **Intelligent Memory Management**:
-  - Automatic compression of old messages (30-70% token reduction)
-  - LLM-driven summarization for context optimization
-  - Token tracking and cost estimation
-  - Multiple compression strategies (sliding window, selective, deletion)
-  - Supports long-running tasks without context overflow
-
-- 🛠️ **Advanced File Tools**:
-  - **Glob**: Fast file pattern matching (`**/*.py`, `src/**/*.js`)
-  - **Grep**: Regex-based content search with context/count modes
-  - **Edit**: Surgical file editing without reading entire contents
-  - **Sub-agent Delegation**: Create sub-agents to handle complex subtasks
-
-- 🤖 **Multiple LLM Support**:
-  - **Anthropic Claude** (Claude 3.5 Sonnet, Haiku, Opus, etc.)
-  - **OpenAI GPT** (GPT-4o, GPT-4o-mini, O1, O3, etc.)
-  - **Google Gemini** (Gemini 1.5/2.0 Pro, Flash, etc.)
-  - Easy switching between providers via configuration
-  - Custom base URL support (proxies, Azure, local deployments)
-
-- 🛠️ **Rich Toolset**:
-  - File operations (read/write/search/glob/grep/edit)
-  - Python code execution and calculator
-  - Web search (DuckDuckGo)
-  - Shell command execution
-  - Sub-agent delegation for complex subtasks
-
-- 🔄 **Robust & Resilient**:
-  - Automatic retry with exponential backoff for rate limits (429 errors)
-  - Handles API quota exhaustion gracefully
-  - Configurable retry behavior per provider
-
-- 🎓 **Learning-Friendly**:
-  - Clean, modular architecture
-  - Comprehensive documentation
-  - Easy to extend and customize
+General AI Agent System
 
 ## Installation
 
 ### Option 1: Install from PyPI (Recommended - Coming Soon)
 
 ```bash
-pip install agentic-loop
+pip install AgenticLoop
 ```
 
 ### Option 2: Install from Source (Development)
@@ -73,8 +30,8 @@ pip install git+https://github.com/yourusername/AgenticLoop.git
 ### Option 4: Docker
 
 ```bash
-docker pull yourusername/agentic-loop:latest
-docker run -it --rm -e ANTHROPIC_API_KEY=your_key agentic-loop interactive
+docker pull yourusername/AgenticLoop:latest
+docker run -it --rm -e ANTHROPIC_API_KEY=your_key AgenticLoop interactive
 ```
 
 ## Quick Start
@@ -140,16 +97,16 @@ LOG_TO_CONSOLE=false
 
 ```bash
 # Interactive mode
-agentic-loop
+aloop
 
 # Single task (ReAct mode)
-agentic-loop --mode react "Calculate 123 * 456"
+aloop --mode react "Calculate 123 * 456"
 
 # Single task (Plan-Execute mode)
-agentic-loop --mode plan "Build a web scraper"
+aloop --mode plan "Build a web scraper"
 
 # Show help
-agentic-loop --help
+aloop --help
 ```
 
 #### Direct Python Execution (Development)
@@ -202,7 +159,7 @@ See [Memory Management Documentation](docs/memory-management.md) for detailed in
 ## Project Structure
 
 ```
-agentic-loop/
+AgenticLoop/
 ├── README.md                    # This document
 ├── requirements.txt             # Python dependencies
 ├── .env.example                 # Environment variables template

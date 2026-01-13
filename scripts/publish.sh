@@ -3,7 +3,7 @@
 
 set -e
 
-echo "🚀 Publishing agentic-loop to PyPI..."
+echo "🚀 Publishing AgenticLoop to PyPI..."
 
 # Check if dist/ exists
 if [ ! -d "dist" ]; then
@@ -25,7 +25,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     twine upload dist/*
     echo ""
     echo "✅ Published to PyPI!"
-    echo "Install with: pip install agentic-loop"
+    echo "Install with: pip install AgenticLoop"
 else
     echo "Cancelled."
 fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Command-line interface for agentic-loop."""
+"""Command-line interface for AgenticLoop."""
 import sys
 import os
 

@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentic-loop"
+name = "AgenticLoop"
 version = "0.1.0"
 description = "General AI Agent System"
 readme = "README.md"
@@ -53,7 +53,7 @@ Repository = "https://github.com/luohaha/AgenticLoop"
 Issues = "https://github.com/luohaha/AgenticLoop/issues"
 
 [project.scripts]
-agentic-loop = "cli:main"
+aloop = "cli:main"
 
 [tool.setuptools]
 # Use current flat structure

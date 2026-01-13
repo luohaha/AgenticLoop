@@ -1,6 +1,6 @@
 # Tests
 
-This directory contains test files for the agentic-loop project.
+This directory contains test files for the AgenticLoop project.
 
 ## Test Files
 

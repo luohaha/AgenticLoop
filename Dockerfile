@@ -1,4 +1,4 @@
-# Multi-stage Docker build for agentic-loop
+# Multi-stage Docker build for AgenticLoop
 
 FROM python:3.12-slim AS base
 
@@ -30,5 +30,5 @@ ENTRYPOINT ["python", "main.py"]
 CMD ["--help"]
 
 # Usage:
-# Build: docker build -t agentic-loop .
-# Run: docker run -it --rm -e ANTHROPIC_API_KEY=your_key agentic-loop interactive
+# Build: docker build -t AgenticLoop .
+# Run: docker run -it --rm -e ANTHROPIC_API_KEY=your_key AgenticLoop interactive

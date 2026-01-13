@@ -3,7 +3,7 @@
 
 set -e  # Exit on error
 
-echo "🔨 Building agentic-loop package..."
+echo "🔨 Building AgenticLoop package..."
 
 # Clean previous builds
 echo "Cleaning previous builds..."

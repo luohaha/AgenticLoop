@@ -1,4 +1,4 @@
-"""Memory management system for agentic-loop framework.
+"""Memory management system for AgenticLoop framework.
 
 This module provides intelligent memory management with automatic compression,
 token tracking, cost optimization, and optional persistence.

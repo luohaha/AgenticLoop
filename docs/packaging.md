@@ -1,6 +1,6 @@
 # Packaging and Distribution Guide
 
-This guide explains how to package and distribute agentic-loop.
+This guide explains how to package and distribute AgenticLoop.
 
 ## 📦 Quick Start - Local Installation
 
@@ -16,8 +16,8 @@ pip install -e .
 
 Now you can use it globally:
 ```bash
-agentic-loop --help
-agentic-loop interactive
+AgenticLoop --help
+AgenticLoop interactive
 ```
 
 ## 🚀 Publishing to PyPI
@@ -39,7 +39,7 @@ This creates distribution files in `dist/`:
 pip install dist/agentic_loop-0.1.0-py3-none-any.whl
 
 # Test it
-agentic-loop interactive
+AgenticLoop interactive
 ```
 
 ### 3. Publish to Test PyPI (Recommended First)
@@ -52,7 +52,7 @@ agentic-loop interactive
 twine upload --repository testpypi dist/*
 
 # Install from test PyPI
-pip install --index-url https://test.pypi.org/simple/ agentic-loop
+pip install --index-url https://test.pypi.org/simple/ AgenticLoop
 ```
 
 ### 4. Publish to Production PyPI
@@ -65,7 +65,7 @@ pip install --index-url https://test.pypi.org/simple/ agentic-loop
 ./scripts/publish.sh
 
 # Now anyone can install
-pip install agentic-loop
+pip install AgenticLoop
 ```
 
 ## 🐳 Docker Distribution
@@ -73,7 +73,7 @@ pip install agentic-loop
 ### Build Docker Image
 
 ```bash
-docker build -t agentic-loop:latest .
+docker build -t AgenticLoop:latest .
 ```
 
 ### Run with Docker
@@ -83,24 +83,24 @@ docker build -t agentic-loop:latest .
 docker run -it --rm \
   -e ANTHROPIC_API_KEY=your_key \
   -v $(pwd)/data:/app/data \
-  agentic-loop interactive
+  AgenticLoop interactive
 
 # Single task
 docker run --rm \
   -e ANTHROPIC_API_KEY=your_key \
-  agentic-loop --mode react "Analyze this code"
+  AgenticLoop --mode react "Analyze this code"
 ```
 
 ### Publish Docker Image
 
 ```bash
 # Tag for Docker Hub
-docker tag agentic-loop:latest yourusername/agentic-loop:0.1.0
-docker tag agentic-loop:latest yourusername/agentic-loop:latest
+docker tag AgenticLoop:latest yourusername/AgenticLoop:0.1.0
+docker tag AgenticLoop:latest yourusername/AgenticLoop:latest
 
 # Push
-docker push yourusername/agentic-loop:0.1.0
-docker push yourusername/agentic-loop:latest
+docker push yourusername/AgenticLoop:0.1.0
+docker push yourusername/AgenticLoop:latest
 ```
 
 ## 📱 Standalone Executable (Optional)
@@ -115,14 +115,14 @@ pip install pyinstaller
 
 # Create executable
 pyinstaller --onefile \
-  --name agentic-loop \
+  --name AgenticLoop \
   --add-data ".env.example:." \
   --hidden-import anthropic \
   --hidden-import openai \
   --hidden-import google.genai \
   main.py
 
-# Executable will be in dist/agentic-loop
+# Executable will be in dist/AgenticLoop
 ```
 
 **Note**: The executable will be ~50-100MB and platform-specific.
@@ -162,7 +162,7 @@ recursive-include data *.json
 
 Use constraints file:
 ```bash
-pip install agentic-loop -c constraints.txt
+pip install AgenticLoop -c constraints.txt
 ```
 
 ## 📚 Distribution Methods Summary
@@ -170,9 +170,9 @@ pip install agentic-loop -c constraints.txt
 | Method | Command | Use Case |
 |--------|---------|----------|
 | **Local Dev** | `pip install -e .` | Development, testing |
-| **PyPI** | `pip install agentic-loop` | Public distribution |
-| **Docker** | `docker run agentic-loop` | Containerized deployment |
-| **Executable** | `./agentic-loop` | Non-Python users |
+| **PyPI** | `pip install AgenticLoop` | Public distribution |
+| **Docker** | `docker run AgenticLoop` | Containerized deployment |
+| **Executable** | `./AgenticLoop` | Non-Python users |
 | **GitHub** | `pip install git+https://github.com/user/repo` | Direct from source |
 
 ## 🎯 Recommended Workflow
@@ -180,4 +180,4 @@ pip install agentic-loop -c constraints.txt
 1. **Development**: Use `pip install -e .`
 2. **Testing**: Build and test with `./scripts/build.sh`
 3. **Distribution**: Publish to PyPI
-4. **Users**: Install with `pip install agentic-loop`
+4. **Users**: Install with `pip install AgenticLoop`

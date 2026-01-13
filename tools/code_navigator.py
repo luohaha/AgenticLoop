@@ -20,7 +20,7 @@ class CodeNavigatorTool(BaseTool):
     """Navigate code using AST analysis - fast and accurate."""
 
     def __init__(self):
-        self.cache_dir = Path(".agentic-loop/cache")
+        self.cache_dir = Path(".AgenticLoop/cache")
         self.symbol_cache = {}  # {symbol_name: [(file, line, type, info)]}
         self.cache_loaded = False
 
