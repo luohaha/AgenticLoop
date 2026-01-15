@@ -222,15 +222,20 @@ class LiteLLMLLM:
         message = response.choices[0].message
 
         # Determine stop reason
-        finish_reason = response.choices[0].finish_reason
-        if finish_reason == "tool_calls":
+        # IMPORTANT: Check for tool_calls first, regardless of finish_reason
+        # Some LLM providers may return finish_reason='stop' even when tool_calls are present
+        if hasattr(message, "tool_calls") and message.tool_calls:
             stop_reason = "tool_use"
-        elif finish_reason == "stop":
-            stop_reason = "end_turn"
-        elif finish_reason == "length":
-            stop_reason = "max_tokens"
         else:
-            stop_reason = finish_reason or "end_turn"
+            finish_reason = response.choices[0].finish_reason
+            if finish_reason == "tool_calls":
+                stop_reason = "tool_use"
+            elif finish_reason == "stop":
+                stop_reason = "end_turn"
+            elif finish_reason == "length":
+                stop_reason = "max_tokens"
+            else:
+                stop_reason = finish_reason or "end_turn"
 
         # Extract token usage
         usage_dict = None
