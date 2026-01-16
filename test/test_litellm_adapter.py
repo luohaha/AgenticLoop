@@ -1,9 +1,6 @@
 """Tests for LiteLLM adapter message conversion."""
 
-import json
 from unittest.mock import MagicMock
-
-import pytest
 
 from llm.base import LLMMessage
 from llm.litellm_adapter import LiteLLMLLM
