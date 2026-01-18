@@ -2,55 +2,9 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from llm.base import LLMMessage
-
-
-@dataclass
-class MemoryConfig:
-    """Configuration for memory management system."""
-
-    # Token budgets
-    max_context_tokens: int = 100000  # Maximum context window
-    target_working_memory_tokens: int = 30000  # Soft limit - trigger compression at this level
-    compression_threshold: int = 40000  # Hard limit - must compress regardless of message count
-
-    # Memory windows
-    short_term_message_count: int = 100  # Keep last N messages in short-term memory
-    short_term_min_message_count: int = 5  # Keep at least N messages in short-term memory
-
-    # Compression settings
-    compression_ratio: float = 0.3  # Target 30% of original size
-    preserve_tool_calls: bool = True  # Always preserve tool-related messages
-    preserve_system_prompts: bool = True  # Always preserve system prompts
-
-    # Cost management
-    max_cost_dollars: Optional[float] = None  # Optional budget limit
-
-    # Feature flags
-    enable_compression: bool = True  # Enable/disable compression
-    compression_model: Optional[str] = None  # Model to use for compression (None = same as agent)
-
-    # Tool result processing (always enabled)
-    tool_result_storage_threshold: int = 10000  # Store externally if result > N tokens
-    tool_result_storage_path: Optional[str] = None  # Path to SQLite DB (None = in-memory)
-    tool_result_summary_model: Optional[str] = (
-        None  # Model for summarizing large tool results (None = disable)
-    )
-
-    # Tool-specific token budgets (can be overridden per tool)
-    tool_result_budgets: Dict[str, int] = field(
-        default_factory=lambda: {
-            "read_file": 1000,
-            "grep_content": 800,
-            "execute_shell": 500,
-            "web_search": 1200,
-            "web_fetch": 1500,
-            "glob_files": 600,
-            "default": 1000,
-        }
-    )
 
 
 @dataclass

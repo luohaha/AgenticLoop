@@ -2,7 +2,26 @@
 
 import pytest
 
+from config import Config
 from llm.base import LLMMessage, LLMResponse
+
+
+@pytest.fixture
+def set_memory_config(monkeypatch):
+    """Fixture to temporarily set memory configuration values.
+
+    Usage:
+        def test_something(set_memory_config, mock_llm):
+            set_memory_config(MEMORY_SHORT_TERM_SIZE=5, MEMORY_COMPRESSION_THRESHOLD=100)
+            manager = MemoryManager(mock_llm)
+            ...
+    """
+
+    def _set_config(**kwargs):
+        for key, value in kwargs.items():
+            monkeypatch.setattr(Config, key, value)
+
+    return _set_config
 
 
 class MockLLM:

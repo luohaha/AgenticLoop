@@ -3,9 +3,10 @@
 import logging
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
+from config import Config
 from llm.base import LLMMessage
 
-from .types import CompressedMemory, CompressionStrategy, MemoryConfig
+from .types import CompressedMemory, CompressionStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +35,13 @@ Original messages ({count} messages, ~{tokens} tokens):
 
     Provide a concise but comprehensive summary that captures the essential information. Be specific and include concrete details. Target length: {target_tokens} tokens."""
 
-    def __init__(self, llm: "LiteLLMLLM", config: MemoryConfig):
+    def __init__(self, llm: "LiteLLMLLM"):
         """Initialize compressor.
 
         Args:
             llm: LLM instance to use for summarization
-            config: Memory configuration
         """
         self.llm = llm
-        self.config = config
 
     def compress(
         self,
@@ -69,7 +68,7 @@ Original messages ({count} messages, ~{tokens} tokens):
         if target_tokens is None:
             # Calculate target based on config compression ratio
             original_tokens = self._estimate_tokens(messages)
-            target_tokens = int(original_tokens * self.config.compression_ratio)
+            target_tokens = int(original_tokens * Config.MEMORY_COMPRESSION_RATIO)
 
         if orphaned_tool_use_ids is None:
             orphaned_tool_use_ids = set()
@@ -283,7 +282,7 @@ Original messages ({count} messages, ~{tokens} tokens):
 
         # Step 1: Mark system messages for preservation
         for i, msg in enumerate(messages):
-            if self.config.preserve_system_prompts and msg.role == "system":
+            if Config.MEMORY_PRESERVE_SYSTEM_PROMPTS and msg.role == "system":
                 preserve_indices.add(i)
 
         # Step 2: Find tool pairs and orphaned tool_use messages
@@ -315,7 +314,7 @@ Original messages ({count} messages, ~{tokens} tokens):
 
         # Step 3: Apply selective preservation strategy (keep recent N messages)
         # Preserve last short_term_min_message_count messages by default (sliding window approach)
-        preserve_count = min(self.config.short_term_min_message_count, len(messages))
+        preserve_count = min(Config.MEMORY_SHORT_TERM_MIN_SIZE, len(messages))
         for i in range(len(messages) - preserve_count, len(messages)):
             if i >= 0:
                 preserve_indices.add(i)

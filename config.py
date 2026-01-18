@@ -1,6 +1,7 @@
 """Configuration management for the agentic system."""
 
 import os
+import random
 
 from dotenv import load_dotenv
 
@@ -8,7 +9,10 @@ load_dotenv()
 
 
 class Config:
-    """Configuration for the agentic system."""
+    """Configuration for the agentic system.
+
+    All configuration is centralized here. Access config values directly via Config.XXX.
+    """
 
     # LiteLLM Model Configuration
     # Format: provider/model_name (e.g. "anthropic/claude-3-5-sonnet-20241022")
@@ -31,6 +35,8 @@ class Config:
     RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "3"))
     RETRY_INITIAL_DELAY = float(os.getenv("RETRY_INITIAL_DELAY", "1.0"))
     RETRY_MAX_DELAY = float(os.getenv("RETRY_MAX_DELAY", "60.0"))
+    RETRY_EXPONENTIAL_BASE = 2.0
+    RETRY_JITTER = True
 
     # Memory Management Configuration
     MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "true").lower() == "true"
@@ -38,9 +44,14 @@ class Config:
     MEMORY_TARGET_TOKENS = int(os.getenv("MEMORY_TARGET_TOKENS", "50000"))
     MEMORY_COMPRESSION_THRESHOLD = int(os.getenv("MEMORY_COMPRESSION_THRESHOLD", "40000"))
     MEMORY_SHORT_TERM_SIZE = int(os.getenv("MEMORY_SHORT_TERM_SIZE", "100"))
+    MEMORY_SHORT_TERM_MIN_SIZE = int(os.getenv("MEMORY_SHORT_TERM_MIN_SIZE", "5"))
     MEMORY_COMPRESSION_RATIO = float(os.getenv("MEMORY_COMPRESSION_RATIO", "0.3"))
+    MEMORY_PRESERVE_TOOL_CALLS = True
+    MEMORY_PRESERVE_SYSTEM_PROMPTS = True
 
     # Tool Result Processing Configuration
+    TOOL_RESULT_STORAGE_THRESHOLD = int(os.getenv("TOOL_RESULT_STORAGE_THRESHOLD", "10000"))
+    TOOL_RESULT_STORAGE_PATH = os.getenv("TOOL_RESULT_STORAGE_PATH")
     # Model for summarizing large tool results (e.g., "openai/gpt-4o-mini", "anthropic/claude-3-haiku-20240307")
     # If not set, LLM summarization is disabled and falls back to smart truncation
     TOOL_RESULT_SUMMARY_MODEL = os.getenv("TOOL_RESULT_SUMMARY_MODEL")
@@ -52,40 +63,26 @@ class Config:
     LOG_TO_CONSOLE = os.getenv("LOG_TO_CONSOLE", "false").lower() == "true"
 
     @classmethod
-    def get_retry_config(cls):
-        """Get retry configuration.
+    def get_retry_delay(cls, attempt: int) -> float:
+        """Calculate delay for a given retry attempt using exponential backoff.
+
+        Args:
+            attempt: Current attempt number (0-indexed)
 
         Returns:
-            RetryConfig instance with settings from environment variables
+            Delay in seconds
         """
-        from llm.retry import RetryConfig
-
-        return RetryConfig(
-            max_retries=cls.RETRY_MAX_ATTEMPTS,
-            initial_delay=cls.RETRY_INITIAL_DELAY,
-            max_delay=cls.RETRY_MAX_DELAY,
-            exponential_base=2.0,
-            jitter=True,
+        # Calculate exponential backoff
+        delay = min(
+            cls.RETRY_INITIAL_DELAY * (cls.RETRY_EXPONENTIAL_BASE**attempt),
+            cls.RETRY_MAX_DELAY,
         )
 
-    @classmethod
-    def get_memory_config(cls):
-        """Get memory configuration.
+        # Add jitter to avoid thundering herd
+        if cls.RETRY_JITTER:
+            delay = delay * (0.5 + random.random())
 
-        Returns:
-            MemoryConfig instance with settings from environment variables
-        """
-        from memory import MemoryConfig
-
-        return MemoryConfig(
-            max_context_tokens=cls.MEMORY_MAX_CONTEXT_TOKENS,
-            target_working_memory_tokens=cls.MEMORY_TARGET_TOKENS,
-            compression_threshold=cls.MEMORY_COMPRESSION_THRESHOLD,
-            short_term_message_count=cls.MEMORY_SHORT_TERM_SIZE,
-            compression_ratio=cls.MEMORY_COMPRESSION_RATIO,
-            enable_compression=cls.MEMORY_ENABLED,
-            tool_result_summary_model=cls.TOOL_RESULT_SUMMARY_MODEL,
-        )
+        return delay
 
     @classmethod
     def validate(cls):

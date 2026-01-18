@@ -9,10 +9,9 @@ from .manager import MemoryManager
 from .short_term import ShortTermMemory
 from .store import MemoryStore
 from .token_tracker import TokenTracker
-from .types import CompressedMemory, CompressionStrategy, MemoryConfig
+from .types import CompressedMemory, CompressionStrategy
 
 __all__ = [
-    "MemoryConfig",
     "CompressedMemory",
     "CompressionStrategy",
     "MemoryManager",

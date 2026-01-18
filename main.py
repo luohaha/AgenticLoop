@@ -27,9 +27,9 @@ from tools.git_tools import (
     GitStashTool,
     GitStatusTool,
 )
+from tools.retrieve_tool_result import RetrieveToolResultTool
 from tools.shell import ShellTool
 from tools.smart_edit import SmartEditTool
-from tools.retrieve_tool_result import RetrieveToolResultTool
 from tools.web_fetch import WebFetchTool
 from tools.web_search import WebSearchTool
 from utils import get_log_file_path, setup_logger, terminal_ui
@@ -75,11 +75,10 @@ def create_agent(mode: str = "react"):
         GitCleanTool(),
     ]
 
-    # Create LLM instance with LiteLLM
+    # Create LLM instance with LiteLLM (retry config is read from Config directly)
     llm = LiteLLMLLM(
         model=Config.LITELLM_MODEL,
         api_base=Config.LITELLM_API_BASE,
-        retry_config=Config.get_retry_config(),
         drop_params=Config.LITELLM_DROP_PARAMS,
         timeout=Config.LITELLM_TIMEOUT,
     )

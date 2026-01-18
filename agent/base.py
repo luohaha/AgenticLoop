@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
 from llm import LLMMessage, LLMResponse, ToolResult
-from memory import MemoryConfig, MemoryManager
+from memory import MemoryManager
 from tools.base import BaseTool
 from tools.todo import TodoTool
 from utils import get_logger, terminal_ui
@@ -26,7 +26,6 @@ class BaseAgent(ABC):
         llm: "LiteLLMLLM",
         tools: List[BaseTool],
         max_iterations: int = 10,
-        memory_config: Optional[MemoryConfig] = None,
     ):
         """Initialize the agent.
 
@@ -34,7 +33,6 @@ class BaseAgent(ABC):
             llm: LLM instance to use
             max_iterations: Maximum number of agent loop iterations
             tools: List of tools available to the agent
-            memory_config: Optional memory configuration (None = use defaults)
         """
         self.llm = llm
         self.max_iterations = max_iterations
@@ -53,10 +51,8 @@ class BaseAgent(ABC):
 
         self.tool_executor = ToolExecutor(tools)
 
-        # Initialize memory manager
-        if memory_config is None:
-            memory_config = MemoryConfig()
-        self.memory = MemoryManager(memory_config, llm)
+        # Initialize memory manager (uses Config directly)
+        self.memory = MemoryManager(llm)
 
     @abstractmethod
     def run(self, task: str) -> str:

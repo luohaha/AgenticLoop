@@ -5,7 +5,7 @@ especially focusing on edge cases and the tool_call/tool_result matching issue.
 """
 
 from llm.base import LLMMessage
-from memory import MemoryConfig, MemoryManager
+from memory import MemoryManager
 from memory.types import CompressionStrategy
 
 
@@ -15,13 +15,13 @@ class TestToolCallResultIntegration:
     This is the critical test suite for the bug mentioned by the user.
     """
 
-    def test_tool_pairs_survive_compression_cycle(self, mock_llm):
+    def test_tool_pairs_survive_compression_cycle(self, set_memory_config, mock_llm):
         """Test that tool pairs remain matched through compression cycles."""
-        config = MemoryConfig(
-            short_term_message_count=6,
-            short_term_min_message_count=2,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=6,
+            MEMORY_SHORT_TERM_MIN_SIZE=2,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add a sequence of tool calls
         messages = []
@@ -62,13 +62,13 @@ class TestToolCallResultIntegration:
         context = manager.get_context_for_llm()
         self._verify_tool_pairs_matched(context)
 
-    def test_tool_pairs_with_multiple_compressions(self, mock_llm):
+    def test_tool_pairs_with_multiple_compressions(self, set_memory_config, mock_llm):
         """Test tool pairs remain matched through multiple compression cycles."""
-        config = MemoryConfig(
-            short_term_message_count=4,
-            short_term_min_message_count=2,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=4,
+            MEMORY_SHORT_TERM_MIN_SIZE=2,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add messages in multiple batches, triggering multiple compressions
         for batch in range(3):
@@ -106,10 +106,10 @@ class TestToolCallResultIntegration:
         context = manager.get_context_for_llm()
         self._verify_tool_pairs_matched(context)
 
-    def test_interleaved_tool_calls(self, mock_llm):
+    def test_interleaved_tool_calls(self, set_memory_config, mock_llm):
         """Test tool pairs when tool calls are interleaved."""
-        config = MemoryConfig(short_term_message_count=10)
-        manager = MemoryManager(config, mock_llm)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=10)
+        manager = MemoryManager(mock_llm)
 
         # Add interleaved tool calls (assistant makes multiple tool calls at once)
         manager.add_message(LLMMessage(role="user", content="Complex request"))
@@ -140,10 +140,10 @@ class TestToolCallResultIntegration:
         context = manager.get_context_for_llm()
         self._verify_tool_pairs_matched(context)
 
-    def test_orphaned_tool_use_detection(self, mock_llm):
+    def test_orphaned_tool_use_detection(self, set_memory_config, mock_llm):
         """Test detection of orphaned tool_use (no matching result)."""
-        config = MemoryConfig(short_term_message_count=5)
-        manager = MemoryManager(config, mock_llm)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        manager = MemoryManager(mock_llm)
 
         # Add tool_use without result
         manager.add_message(LLMMessage(role="user", content="Request"))
@@ -179,10 +179,10 @@ class TestToolCallResultIntegration:
         if orphans:
             print(f"Detected orphaned tool_use: {orphans}")
 
-    def test_orphaned_tool_result_detection(self, mock_llm):
+    def test_orphaned_tool_result_detection(self, set_memory_config, mock_llm):
         """Test detection of orphaned tool_result (no matching use)."""
-        config = MemoryConfig(short_term_message_count=5)
-        manager = MemoryManager(config, mock_llm)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        manager = MemoryManager(mock_llm)
 
         # Add tool_result without use (this shouldn't happen but let's test it)
         manager.add_message(LLMMessage(role="user", content="Request"))
@@ -239,13 +239,13 @@ class TestToolCallResultIntegration:
 class TestCompressionIntegration:
     """Integration tests for compression behavior."""
 
-    def test_full_conversation_lifecycle(self, mock_llm):
+    def test_full_conversation_lifecycle(self, set_memory_config, mock_llm):
         """Test a complete conversation lifecycle with multiple compressions."""
-        config = MemoryConfig(
-            short_term_message_count=8,
-            target_working_memory_tokens=200,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=8,
+            MEMORY_TARGET_TOKENS=200,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Simulate a long conversation
         for i in range(20):
@@ -264,13 +264,13 @@ class TestCompressionIntegration:
         context = manager.get_context_for_llm()
         assert len(context) < 40  # Compressed from 40 messages
 
-    def test_mixed_content_conversation(self, mock_llm):
+    def test_mixed_content_conversation(self, set_memory_config, mock_llm):
         """Test conversation with mixed text and tool content."""
-        config = MemoryConfig(
-            short_term_message_count=6,
-            short_term_min_message_count=2,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=6,
+            MEMORY_SHORT_TERM_MIN_SIZE=2,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Mix of text and tool messages
         manager.add_message(LLMMessage(role="user", content="Text message 1"))
@@ -303,13 +303,13 @@ class TestCompressionIntegration:
         context = manager.get_context_for_llm()
         assert len(context) > 0
 
-    def test_system_message_persistence(self, mock_llm):
+    def test_system_message_persistence(self, set_memory_config, mock_llm):
         """Test that system messages persist through compressions."""
-        config = MemoryConfig(
-            short_term_message_count=5,
-            preserve_system_prompts=True,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=5,
+            MEMORY_PRESERVE_SYSTEM_PROMPTS=True,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         system_msg = LLMMessage(role="system", content="You are a helpful assistant.")
         manager.add_message(system_msg)
@@ -327,13 +327,15 @@ class TestCompressionIntegration:
 class TestEdgeCaseIntegration:
     """Integration tests for edge cases."""
 
-    def test_compression_with_no_compressible_content(self, mock_llm, protected_tool_messages):
+    def test_compression_with_no_compressible_content(
+        self, set_memory_config, mock_llm, protected_tool_messages
+    ):
         """Test compression when all content is protected."""
-        config = MemoryConfig(
-            short_term_message_count=10,  # Large enough to avoid auto-compression
-            short_term_min_message_count=0,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=10,  # Large enough to avoid auto-compression
+            MEMORY_SHORT_TERM_MIN_SIZE=0,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add only protected tool messages
         for msg in protected_tool_messages:
@@ -353,13 +355,13 @@ class TestEdgeCaseIntegration:
                         found_protected = True
         assert found_protected or len(result.preserved_messages) > 0
 
-    def test_rapid_compression_cycles(self, mock_llm):
+    def test_rapid_compression_cycles(self, set_memory_config, mock_llm):
         """Test many rapid compression cycles."""
-        config = MemoryConfig(
-            short_term_message_count=2,
-            target_working_memory_tokens=50,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=2,
+            MEMORY_TARGET_TOKENS=50,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add messages rapidly, triggering many compressions
         for i in range(20):
@@ -373,10 +375,10 @@ class TestEdgeCaseIntegration:
         context = manager.get_context_for_llm()
         assert context is not None
 
-    def test_alternating_compression_strategies(self, mock_llm):
+    def test_alternating_compression_strategies(self, set_memory_config, mock_llm):
         """Test using different compression strategies on same manager."""
-        config = MemoryConfig(short_term_message_count=5)
-        manager = MemoryManager(config, mock_llm)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        manager = MemoryManager(mock_llm)
 
         # Add messages and compress with sliding window
         for i in range(4):
@@ -405,10 +407,10 @@ class TestEdgeCaseIntegration:
         assert manager.compression_count == 2
         assert len(manager.summaries) == 2
 
-    def test_empty_content_blocks(self, mock_llm):
+    def test_empty_content_blocks(self, set_memory_config, mock_llm):
         """Test handling of empty content blocks."""
-        config = MemoryConfig(short_term_message_count=5)
-        manager = MemoryManager(config, mock_llm)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        manager = MemoryManager(mock_llm)
 
         # Add message with empty content blocks
         manager.add_message(
@@ -427,13 +429,13 @@ class TestEdgeCaseIntegration:
         # Test passes if no error occurred
         assert context is not None
 
-    def test_very_long_single_message(self, mock_llm):
+    def test_very_long_single_message(self, set_memory_config, mock_llm):
         """Test handling of a very long single message."""
-        config = MemoryConfig(
-            short_term_message_count=5,
-            target_working_memory_tokens=100,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=5,
+            MEMORY_TARGET_TOKENS=100,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add very long message
         long_content = "This is a very long message. " * 500
@@ -446,10 +448,10 @@ class TestEdgeCaseIntegration:
 class TestMemoryReset:
     """Test reset functionality in various scenarios."""
 
-    def test_reset_after_compression(self, mock_llm, simple_messages):
+    def test_reset_after_compression(self, set_memory_config, mock_llm, simple_messages):
         """Test reset after compression has occurred."""
-        config = MemoryConfig(short_term_message_count=3)
-        manager = MemoryManager(config, mock_llm)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=3)
+        manager = MemoryManager(mock_llm)
 
         # Add messages and compress
         for msg in simple_messages:
@@ -464,13 +466,13 @@ class TestMemoryReset:
         assert len(manager.summaries) == 0
         assert manager.short_term.count() == 0
 
-    def test_reuse_after_reset(self, mock_llm):
+    def test_reuse_after_reset(self, set_memory_config, mock_llm):
         """Test that manager can be reused after reset."""
-        config = MemoryConfig(
-            short_term_message_count=10,  # Large enough to avoid compression
-            target_working_memory_tokens=100000,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=10,  # Large enough to avoid compression
+            MEMORY_TARGET_TOKENS=100000,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # First use
         for i in range(5):

@@ -2,7 +2,7 @@
 
 from llm.base import LLMMessage
 from memory.compressor import WorkingMemoryCompressor
-from memory.types import CompressionStrategy, MemoryConfig
+from memory.types import CompressionStrategy
 
 
 class TestCompressorBasics:
@@ -10,16 +10,13 @@ class TestCompressorBasics:
 
     def test_initialization(self, mock_llm):
         """Test compressor initialization."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         assert compressor.llm == mock_llm
-        assert compressor.config == config
 
     def test_compress_empty_messages(self, mock_llm):
         """Test compressing empty message list."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         result = compressor.compress([])
 
@@ -28,8 +25,7 @@ class TestCompressorBasics:
 
     def test_compress_single_message(self, mock_llm):
         """Test compressing a single message."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         messages = [LLMMessage(role="user", content="Hello")]
         result = compressor.compress(messages, strategy=CompressionStrategy.SLIDING_WINDOW)
@@ -43,8 +39,7 @@ class TestCompressionStrategies:
 
     def test_sliding_window_strategy(self, mock_llm, simple_messages):
         """Test sliding window compression strategy."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         result = compressor.compress(
             simple_messages, strategy=CompressionStrategy.SLIDING_WINDOW, target_tokens=100
@@ -58,8 +53,7 @@ class TestCompressionStrategies:
 
     def test_deletion_strategy(self, mock_llm, simple_messages):
         """Test deletion compression strategy."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         result = compressor.compress(simple_messages, strategy=CompressionStrategy.DELETION)
 
@@ -69,10 +63,10 @@ class TestCompressionStrategies:
         assert result.compressed_tokens == 0
         assert result.metadata["strategy"] == "deletion"
 
-    def test_selective_strategy_with_tools(self, mock_llm, tool_use_messages):
+    def test_selective_strategy_with_tools(self, set_memory_config, mock_llm, tool_use_messages):
         """Test selective compression with tool messages."""
-        config = MemoryConfig(short_term_min_message_count=2)
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=2)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         result = compressor.compress(
             tool_use_messages, strategy=CompressionStrategy.SELECTIVE, target_tokens=200
@@ -83,10 +77,10 @@ class TestCompressionStrategies:
         # Tool pairs should be preserved
         assert len(result.preserved_messages) > 0
 
-    def test_selective_strategy_preserves_system_messages(self, mock_llm):
+    def test_selective_strategy_preserves_system_messages(self, set_memory_config, mock_llm):
         """Test that selective strategy preserves system messages."""
-        config = MemoryConfig(preserve_system_prompts=True)
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_PRESERVE_SYSTEM_PROMPTS=True)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         messages = [
             LLMMessage(role="system", content="System prompt"),
@@ -108,8 +102,7 @@ class TestToolPairDetection:
 
     def test_find_tool_pairs_basic(self, mock_llm, tool_use_messages):
         """Test basic tool pair detection."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         pairs, orphaned = compressor._find_tool_pairs(tool_use_messages)
 
@@ -124,8 +117,7 @@ class TestToolPairDetection:
 
     def test_find_tool_pairs_multiple(self, mock_llm):
         """Test finding multiple tool pairs."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         messages = []
         for i in range(3):
@@ -161,8 +153,7 @@ class TestToolPairDetection:
 
     def test_find_tool_pairs_with_mismatches(self, mock_llm, mismatched_tool_messages):
         """Test tool pair detection with mismatched pairs."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         pairs, orphaned = compressor._find_tool_pairs(mismatched_tool_messages)
 
@@ -171,10 +162,10 @@ class TestToolPairDetection:
         # Should have one orphaned tool_use (tool_1)
         assert len(orphaned) == 1
 
-    def test_tool_pairs_preserved_together(self, mock_llm, tool_use_messages):
+    def test_tool_pairs_preserved_together(self, set_memory_config, mock_llm, tool_use_messages):
         """Test that when a tool pair is found, both messages are preserved together."""
-        config = MemoryConfig(short_term_min_message_count=1)
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=1)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         preserved, to_compress = compressor._separate_messages(tool_use_messages)
 
@@ -204,8 +195,7 @@ class TestProtectedTools:
 
     def test_find_protected_tool_pairs(self, mock_llm, protected_tool_messages):
         """Test finding protected tool pairs (manage_todo_list)."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         # First find all pairs
         all_pairs, orphaned = compressor._find_tool_pairs(protected_tool_messages)
@@ -217,10 +207,12 @@ class TestProtectedTools:
         assert len(protected_pairs) > 0
         assert len(orphaned) == 0
 
-    def test_protected_tools_always_preserved(self, mock_llm, protected_tool_messages):
+    def test_protected_tools_always_preserved(
+        self, set_memory_config, mock_llm, protected_tool_messages
+    ):
         """Test that protected tools are never compressed."""
-        config = MemoryConfig(short_term_min_message_count=0)  # Don't preserve anything by default
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=0)  # Don't preserve anything by default
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         preserved, to_compress = compressor._separate_messages(protected_tool_messages)
 
@@ -239,10 +231,12 @@ class TestProtectedTools:
 
         assert found_protected, "Protected tool should always be preserved"
 
-    def test_non_protected_tools_can_be_compressed(self, mock_llm, tool_use_messages):
+    def test_non_protected_tools_can_be_compressed(
+        self, set_memory_config, mock_llm, tool_use_messages
+    ):
         """Test that non-protected tools can be compressed."""
-        config = MemoryConfig(short_term_min_message_count=0)
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=0)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         preserved, to_compress = compressor._separate_messages(tool_use_messages)
 
@@ -254,10 +248,10 @@ class TestProtectedTools:
 class TestMessageSeparation:
     """Test message separation logic."""
 
-    def test_separate_messages_basic(self, mock_llm, simple_messages):
+    def test_separate_messages_basic(self, set_memory_config, mock_llm, simple_messages):
         """Test basic message separation."""
-        config = MemoryConfig(short_term_min_message_count=2)
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=2)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         preserved, to_compress = compressor._separate_messages(simple_messages)
 
@@ -266,10 +260,10 @@ class TestMessageSeparation:
         # Total should equal original
         assert len(preserved) + len(to_compress) == len(simple_messages)
 
-    def test_separate_preserves_recent_messages(self, mock_llm, simple_messages):
+    def test_separate_preserves_recent_messages(self, set_memory_config, mock_llm, simple_messages):
         """Test that most recent messages are preserved."""
-        config = MemoryConfig(short_term_min_message_count=2)
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=2)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         preserved, to_compress = compressor._separate_messages(simple_messages)
 
@@ -278,10 +272,10 @@ class TestMessageSeparation:
         for msg in last_n_messages:
             assert msg in preserved
 
-    def test_tool_pair_preservation_rule(self, mock_llm, tool_use_messages):
+    def test_tool_pair_preservation_rule(self, set_memory_config, mock_llm, tool_use_messages):
         """Test that tool pairs are preserved together (critical rule)."""
-        config = MemoryConfig(short_term_min_message_count=1)
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=1)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         preserved, to_compress = compressor._separate_messages(tool_use_messages)
 
@@ -330,8 +324,7 @@ class TestTokenEstimation:
 
     def test_estimate_tokens_simple_text(self, mock_llm):
         """Test token estimation for simple text messages."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         messages = [LLMMessage(role="user", content="Hello world")]
         tokens = compressor._estimate_tokens(messages)
@@ -341,8 +334,7 @@ class TestTokenEstimation:
 
     def test_estimate_tokens_long_text(self, mock_llm):
         """Test token estimation for long text."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         long_content = "This is a long message. " * 100
         messages = [LLMMessage(role="user", content=long_content)]
@@ -354,8 +346,7 @@ class TestTokenEstimation:
 
     def test_estimate_tokens_with_tool_content(self, mock_llm, tool_use_messages):
         """Test token estimation with tool content."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         tokens = compressor._estimate_tokens(tool_use_messages)
 
@@ -364,8 +355,7 @@ class TestTokenEstimation:
 
     def test_extract_text_content_from_dict(self, mock_llm):
         """Test extracting text content from dict-based content."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         msg = LLMMessage(
             role="assistant",
@@ -384,8 +374,7 @@ class TestCompressionMetrics:
 
     def test_compression_ratio_calculation(self, mock_llm, simple_messages):
         """Test that compression ratio is calculated correctly."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         result = compressor.compress(
             simple_messages, strategy=CompressionStrategy.SLIDING_WINDOW, target_tokens=50
@@ -398,8 +387,7 @@ class TestCompressionMetrics:
 
     def test_token_savings_calculation(self, mock_llm, simple_messages):
         """Test token savings calculation."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         result = compressor.compress(simple_messages, strategy=CompressionStrategy.SLIDING_WINDOW)
 
@@ -409,8 +397,7 @@ class TestCompressionMetrics:
 
     def test_savings_percentage_calculation(self, mock_llm, simple_messages):
         """Test savings percentage calculation."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         result = compressor.compress(simple_messages, strategy=CompressionStrategy.SLIDING_WINDOW)
 
@@ -423,8 +410,7 @@ class TestCompressionErrors:
 
     def test_compression_with_llm_error(self, mock_llm, simple_messages):
         """Test compression behavior when LLM call fails."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         # Make LLM raise an error
         def error_call(*args, **kwargs):
@@ -442,8 +428,7 @@ class TestCompressionErrors:
 
     def test_unknown_strategy_fallback(self, mock_llm, simple_messages):
         """Test fallback to default strategy for unknown strategy."""
-        config = MemoryConfig()
-        compressor = WorkingMemoryCompressor(mock_llm, config)
+        compressor = WorkingMemoryCompressor(mock_llm)
 
         # Use invalid strategy name
         result = compressor.compress(simple_messages, strategy="invalid_strategy")

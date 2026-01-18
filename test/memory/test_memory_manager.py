@@ -1,7 +1,7 @@
 """Unit tests for MemoryManager."""
 
 from llm.base import LLMMessage
-from memory import MemoryConfig, MemoryManager
+from memory import MemoryManager
 from memory.types import CompressionStrategy
 
 
@@ -10,10 +10,8 @@ class TestMemoryManagerBasics:
 
     def test_initialization(self, mock_llm):
         """Test MemoryManager initialization."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
-        assert manager.config == config
         assert manager.llm == mock_llm
         assert manager.current_tokens == 0
         assert manager.compression_count == 0
@@ -22,8 +20,7 @@ class TestMemoryManagerBasics:
 
     def test_add_system_message(self, mock_llm):
         """Test that system messages are stored separately."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         system_msg = LLMMessage(role="system", content="You are a helpful assistant.")
         manager.add_message(system_msg)
@@ -35,8 +32,7 @@ class TestMemoryManagerBasics:
 
     def test_add_user_message(self, mock_llm):
         """Test adding user messages."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         user_msg = LLMMessage(role="user", content="Hello")
         manager.add_message(user_msg)
@@ -46,8 +42,7 @@ class TestMemoryManagerBasics:
 
     def test_add_assistant_message(self, mock_llm):
         """Test adding assistant messages."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         assistant_msg = LLMMessage(role="assistant", content="Hi there!")
         manager.add_message(assistant_msg)
@@ -57,8 +52,7 @@ class TestMemoryManagerBasics:
 
     def test_get_context_structure(self, mock_llm, simple_messages):
         """Test context structure with system, summaries, and recent messages."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add system message
         system_msg = LLMMessage(role="system", content="You are helpful.")
@@ -76,8 +70,7 @@ class TestMemoryManagerBasics:
 
     def test_reset(self, mock_llm, simple_messages):
         """Test resetting memory manager."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add some messages
         for msg in simple_messages:
@@ -96,14 +89,14 @@ class TestMemoryManagerBasics:
 class TestMemoryCompression:
     """Test compression triggering and behavior."""
 
-    def test_compression_on_short_term_full(self, mock_llm):
+    def test_compression_on_short_term_full(self, set_memory_config, mock_llm):
         """Test compression triggers when short-term memory is full."""
-        config = MemoryConfig(
-            short_term_message_count=5,
-            target_working_memory_tokens=100000,  # Very high to avoid soft limit
-            compression_threshold=200000,  # Very high to avoid hard limit
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=5,
+            MEMORY_TARGET_TOKENS=100000,  # Very high to avoid soft limit
+            MEMORY_COMPRESSION_THRESHOLD=200000,  # Very high to avoid hard limit
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add messages until short-term is full
         for i in range(5):
@@ -115,14 +108,14 @@ class TestMemoryCompression:
         # After compression, short-term is cleared so it's not full
         assert not manager.short_term.is_full()
 
-    def test_compression_on_soft_limit(self, mock_llm):
+    def test_compression_on_soft_limit(self, set_memory_config, mock_llm):
         """Test compression triggers on soft limit (target tokens)."""
-        config = MemoryConfig(
-            target_working_memory_tokens=50,  # Very low to trigger easily
-            compression_threshold=10000,
-            short_term_message_count=100,  # Large enough to not trigger on count
+        set_memory_config(
+            MEMORY_TARGET_TOKENS=50,  # Very low to trigger easily
+            MEMORY_COMPRESSION_THRESHOLD=10000,
+            MEMORY_SHORT_TERM_SIZE=100,  # Large enough to not trigger on count
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add messages until we exceed target tokens
         long_message = "This is a long message. " * 50
@@ -131,14 +124,14 @@ class TestMemoryCompression:
         # Should trigger compression
         assert manager.compression_count >= 1
 
-    def test_compression_on_hard_limit(self, mock_llm):
+    def test_compression_on_hard_limit(self, set_memory_config, mock_llm):
         """Test compression triggers on hard limit (compression threshold)."""
-        config = MemoryConfig(
-            target_working_memory_tokens=10000,
-            compression_threshold=100,  # Very low to trigger easily
-            short_term_message_count=100,
+        set_memory_config(
+            MEMORY_TARGET_TOKENS=10000,
+            MEMORY_COMPRESSION_THRESHOLD=100,  # Very low to trigger easily
+            MEMORY_SHORT_TERM_SIZE=100,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add long message to exceed hard limit
         long_message = "This is a very long message. " * 100
@@ -146,14 +139,14 @@ class TestMemoryCompression:
 
         assert manager.compression_count >= 1
 
-    def test_compression_creates_summary(self, mock_llm, simple_messages):
+    def test_compression_creates_summary(self, set_memory_config, mock_llm, simple_messages):
         """Test that compression creates a summary."""
-        config = MemoryConfig(
-            short_term_message_count=3,
-            target_working_memory_tokens=100000,
-            compression_threshold=200000,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=3,
+            MEMORY_TARGET_TOKENS=100000,
+            MEMORY_COMPRESSION_THRESHOLD=200000,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add messages to trigger compression
         for msg in simple_messages:
@@ -169,8 +162,7 @@ class TestMemoryCompression:
 
     def test_get_stats(self, mock_llm, simple_messages):
         """Test getting memory statistics."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         for msg in simple_messages:
             manager.add_message(msg)
@@ -191,15 +183,15 @@ class TestMemoryCompression:
 class TestToolCallMatching:
     """Test tool_use and tool_result matching scenarios."""
 
-    def test_tool_pairs_preserved_together(self, mock_llm, tool_use_messages):
+    def test_tool_pairs_preserved_together(self, set_memory_config, mock_llm, tool_use_messages):
         """Test that tool_use and tool_result pairs are preserved together."""
-        config = MemoryConfig(
-            short_term_message_count=3,
-            short_term_min_message_count=2,
-            target_working_memory_tokens=100000,
-            compression_threshold=200000,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=3,
+            MEMORY_SHORT_TERM_MIN_SIZE=2,
+            MEMORY_TARGET_TOKENS=100000,
+            MEMORY_COMPRESSION_THRESHOLD=200000,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add tool messages
         for msg in tool_use_messages:
@@ -229,13 +221,15 @@ class TestToolCallMatching:
             tool_use_ids == tool_result_ids
         ), f"Mismatched tool calls: tool_use_ids={tool_use_ids}, tool_result_ids={tool_result_ids}"
 
-    def test_mismatched_tool_calls_detected(self, mock_llm, mismatched_tool_messages):
+    def test_mismatched_tool_calls_detected(
+        self, set_memory_config, mock_llm, mismatched_tool_messages
+    ):
         """Test behavior with mismatched tool_use/tool_result pairs."""
-        config = MemoryConfig(
-            short_term_message_count=4,
-            short_term_min_message_count=2,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=4,
+            MEMORY_SHORT_TERM_MIN_SIZE=2,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add mismatched tool messages
         for msg in mismatched_tool_messages:
@@ -269,13 +263,15 @@ class TestToolCallMatching:
                 f"Detected mismatch - missing results: {missing_results}, missing uses: {missing_uses}"
             )
 
-    def test_protected_tool_always_preserved(self, mock_llm, protected_tool_messages):
+    def test_protected_tool_always_preserved(
+        self, set_memory_config, mock_llm, protected_tool_messages
+    ):
         """Test that protected tools (like manage_todo_list) are always preserved."""
-        config = MemoryConfig(
-            short_term_message_count=10,  # Large enough to avoid auto-compression
-            short_term_min_message_count=1,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=10,  # Large enough to avoid auto-compression
+            MEMORY_SHORT_TERM_MIN_SIZE=1,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add protected tool messages
         for msg in protected_tool_messages:
@@ -305,13 +301,13 @@ class TestToolCallMatching:
 
         assert found_protected, "Protected tool 'manage_todo_list' should be preserved"
 
-    def test_multiple_tool_pairs_in_sequence(self, mock_llm):
+    def test_multiple_tool_pairs_in_sequence(self, set_memory_config, mock_llm):
         """Test multiple consecutive tool_use/tool_result pairs."""
-        config = MemoryConfig(
-            short_term_message_count=10,
-            short_term_min_message_count=2,
+        set_memory_config(
+            MEMORY_SHORT_TERM_SIZE=10,
+            MEMORY_SHORT_TERM_MIN_SIZE=2,
         )
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Create multiple tool pairs
         messages = []
@@ -372,16 +368,14 @@ class TestEdgeCases:
 
     def test_empty_memory_compression(self, mock_llm):
         """Test compressing empty memory."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         result = manager.compress()
         assert result is None
 
     def test_single_message_compression(self, mock_llm):
         """Test compressing with only one message."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         manager.add_message(LLMMessage(role="user", content="Hello"))
         result = manager.compress()
@@ -390,8 +384,7 @@ class TestEdgeCases:
 
     def test_actual_token_counts(self, mock_llm):
         """Test using actual token counts from LLM response."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add message with actual token counts
         msg = LLMMessage(role="assistant", content="Response")
@@ -403,10 +396,10 @@ class TestEdgeCases:
         assert stats["total_input_tokens"] >= 100
         assert stats["total_output_tokens"] >= 50
 
-    def test_compression_with_mixed_content(self, mock_llm):
+    def test_compression_with_mixed_content(self, set_memory_config, mock_llm):
         """Test compression with mixed text and tool content."""
-        config = MemoryConfig(short_term_message_count=5)
-        manager = MemoryManager(config, mock_llm)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        manager = MemoryManager(mock_llm)
 
         messages = [
             LLMMessage(role="user", content="Text only"),
@@ -433,8 +426,7 @@ class TestEdgeCases:
 
     def test_strategy_auto_selection(self, mock_llm, tool_use_messages, simple_messages):
         """Test automatic strategy selection based on message content."""
-        config = MemoryConfig()
-        manager = MemoryManager(config, mock_llm)
+        manager = MemoryManager(mock_llm)
 
         # Add tool messages - should select SELECTIVE strategy
         for msg in tool_use_messages:

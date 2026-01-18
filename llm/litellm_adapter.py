@@ -9,7 +9,7 @@ import litellm
 from utils import get_logger
 
 from .base import LLMMessage, LLMResponse, ToolCall, ToolResult
-from .retry import RetryConfig, with_retry
+from .retry import with_retry
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,6 @@ class LiteLLMLLM:
             **kwargs: Additional configuration:
                 - api_key: API key (optional, uses env vars by default)
                 - api_base: Custom base URL
-                - retry_config: RetryConfig instance
                 - drop_params: Drop unsupported params (default: True)
                 - timeout: Request timeout in seconds
         """
@@ -44,11 +43,6 @@ class LiteLLMLLM:
         self.api_base = kwargs.pop("api_base", None)
         self.drop_params = kwargs.pop("drop_params", True)
         self.timeout = kwargs.pop("timeout", 600)
-
-        # Configure retry behavior
-        self.retry_config = kwargs.pop(
-            "retry_config", RetryConfig(max_retries=3, initial_delay=1.0, max_delay=60.0)
-        )
 
         # Configure LiteLLM global settings
         litellm.drop_params = self.drop_params

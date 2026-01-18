@@ -1,59 +1,14 @@
 """Retry utilities for LLM API calls with exponential backoff."""
 
-import random
 import time
 from functools import wraps
 from typing import Callable, TypeVar
 
+from config import Config
 from utils import get_logger
 
 logger = get_logger(__name__)
 T = TypeVar("T")
-
-
-class RetryConfig:
-    """Configuration for retry behavior."""
-
-    def __init__(
-        self,
-        max_retries: int = 5,
-        initial_delay: float = 1.0,
-        max_delay: float = 60.0,
-        exponential_base: float = 2.0,
-        jitter: bool = True,
-    ):
-        """Initialize retry configuration.
-
-        Args:
-            max_retries: Maximum number of retry attempts
-            initial_delay: Initial delay in seconds
-            max_delay: Maximum delay in seconds
-            exponential_base: Base for exponential backoff
-            jitter: Whether to add random jitter to delays
-        """
-        self.max_retries = max_retries
-        self.initial_delay = initial_delay
-        self.max_delay = max_delay
-        self.exponential_base = exponential_base
-        self.jitter = jitter
-
-    def get_delay(self, attempt: int) -> float:
-        """Calculate delay for a given retry attempt.
-
-        Args:
-            attempt: Current attempt number (0-indexed)
-
-        Returns:
-            Delay in seconds
-        """
-        # Calculate exponential backoff
-        delay = min(self.initial_delay * (self.exponential_base**attempt), self.max_delay)
-
-        # Add jitter to avoid thundering herd
-        if self.jitter:
-            delay = delay * (0.5 + random.random())
-
-        return delay
 
 
 def is_rate_limit_error(error: Exception) -> bool:
@@ -113,11 +68,10 @@ def is_retryable_error(error: Exception) -> bool:
     return any(indicator in error_str for indicator in retryable_indicators)
 
 
-def with_retry(config: RetryConfig = None):
+def with_retry():
     """Decorator to add retry logic with exponential backoff.
 
-    Args:
-        config: RetryConfig instance, uses defaults if None
+    Uses Config.RETRY_* settings for retry configuration.
 
     Returns:
         Decorator function
@@ -126,37 +80,31 @@ def with_retry(config: RetryConfig = None):
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
-            # Try to get config from instance (self) if available
-            retry_config = config
-            if retry_config is None and args and hasattr(args[0], "retry_config"):
-                retry_config = args[0].retry_config
-            if retry_config is None:
-                retry_config = RetryConfig()
-
             last_error = None
+            max_retries = Config.RETRY_MAX_ATTEMPTS
 
-            for attempt in range(retry_config.max_retries + 1):
+            for attempt in range(max_retries + 1):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
                     last_error = e
 
                     # Don't retry on last attempt
-                    if attempt == retry_config.max_retries:
+                    if attempt == max_retries:
                         break
 
                     # Only retry if error is retryable
                     if not is_retryable_error(e):
                         raise
 
-                    # Calculate delay
-                    delay = retry_config.get_delay(attempt)
+                    # Calculate delay using Config
+                    delay = Config.get_retry_delay(attempt)
 
                     # Log retry attempt
                     error_type = "Rate limit" if is_rate_limit_error(e) else "Retryable"
                     logger.warning(f"{error_type} error: {str(e)}")
                     logger.warning(
-                        f"Retrying in {delay:.1f}s... (attempt {attempt + 1}/{retry_config.max_retries})"
+                        f"Retrying in {delay:.1f}s... (attempt {attempt + 1}/{max_retries})"
                     )
 
                     # Wait before retry
@@ -170,13 +118,12 @@ def with_retry(config: RetryConfig = None):
     return decorator
 
 
-def retry_with_backoff(func: Callable[..., T], *args, config: RetryConfig = None, **kwargs) -> T:
+def retry_with_backoff(func: Callable[..., T], *args, **kwargs) -> T:
     """Execute a function with retry logic.
 
     Args:
         func: Function to execute
         *args: Positional arguments for func
-        config: RetryConfig instance
         **kwargs: Keyword arguments for func
 
     Returns:
@@ -185,8 +132,5 @@ def retry_with_backoff(func: Callable[..., T], *args, config: RetryConfig = None
     Raises:
         Last exception if all retries fail
     """
-    if config is None:
-        config = RetryConfig()
-
-    decorated_func = with_retry(config)(func)
+    decorated_func = with_retry()(func)
     return decorated_func(*args, **kwargs)

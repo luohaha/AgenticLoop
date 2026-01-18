@@ -3,8 +3,8 @@
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from llm.base import LLMMessage
 from config import Config
+from llm.base import LLMMessage
 
 from .compressor import WorkingMemoryCompressor
 from .short_term import ShortTermMemory
@@ -12,7 +12,7 @@ from .store import MemoryStore
 from .token_tracker import TokenTracker
 from .tool_result_processor import ToolResultProcessor
 from .tool_result_store import ToolResultStore
-from .types import CompressedMemory, CompressionStrategy, MemoryConfig
+from .types import CompressedMemory, CompressionStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,6 @@ class MemoryManager:
 
     def __init__(
         self,
-        config: MemoryConfig,
         llm: "LiteLLMLLM",
         store: Optional[MemoryStore] = None,
         session_id: Optional[str] = None,
@@ -34,13 +33,11 @@ class MemoryManager:
         """Initialize memory manager.
 
         Args:
-            config: Memory configuration
             llm: LLM instance for compression
             store: Optional MemoryStore for persistence (if None, creates default store)
             session_id: Optional session ID (if resuming session)
             db_path: Path to database file (default: data/memory.db)
         """
-        self.config = config
         self.llm = llm
         self._db_path = db_path
 
@@ -58,17 +55,17 @@ class MemoryManager:
             self.session_id = None
             self._session_created = False
 
-        # Initialize components
-        self.short_term = ShortTermMemory(max_size=config.short_term_message_count)
-        self.compressor = WorkingMemoryCompressor(llm, config)
+        # Initialize components using Config directly
+        self.short_term = ShortTermMemory(max_size=Config.MEMORY_SHORT_TERM_SIZE)
+        self.compressor = WorkingMemoryCompressor(llm)
         self.token_tracker = TokenTracker()
 
         # Initialize tool result processing components (always enabled)
         self.tool_result_processor = ToolResultProcessor(
-            storage_threshold=config.tool_result_storage_threshold,
+            storage_threshold=Config.TOOL_RESULT_STORAGE_THRESHOLD,
             summary_model=Config.TOOL_RESULT_SUMMARY_MODEL,
         )
-        storage_path = config.tool_result_storage_path
+        storage_path = Config.TOOL_RESULT_STORAGE_PATH
         self.tool_result_store = ToolResultStore(db_path=storage_path)
         logger.info(
             f"Tool result processing enabled with external storage: {storage_path or 'in-memory'}"
@@ -112,11 +109,8 @@ class MemoryManager:
         if not session_data:
             raise ValueError(f"Session {session_id} not found")
 
-        # Get config (use loaded config or default)
-        config = session_data["config"] or MemoryConfig()
-
-        # Create manager
-        manager = cls(config=config, llm=llm, store=store, session_id=session_id)
+        # Create manager (config is now read from Config class directly)
+        manager = cls(llm=llm, store=store, session_id=session_id)
 
         # Restore state
         manager.system_messages = session_data["system_messages"]
@@ -195,7 +189,7 @@ class MemoryManager:
         # Log memory state for debugging
         logger.debug(
             f"Memory state: {self.current_tokens} tokens, "
-            f"{self.short_term.count()}/{self.config.short_term_message_count} messages, "
+            f"{self.short_term.count()}/{Config.MEMORY_SHORT_TERM_SIZE} messages, "
             f"full={self.short_term.is_full()}"
         )
 
@@ -209,8 +203,8 @@ class MemoryManager:
             # Log why compression was NOT triggered
             logger.debug(
                 f"Compression check: current={self.current_tokens}, "
-                f"threshold={self.config.compression_threshold}, "
-                f"target={self.config.target_working_memory_tokens}, "
+                f"threshold={Config.MEMORY_COMPRESSION_THRESHOLD}, "
+                f"target={Config.MEMORY_TARGET_TOKENS}, "
                 f"short_term_full={self.short_term.is_full()}"
             )
 
@@ -323,12 +317,15 @@ class MemoryManager:
         Returns:
             Tuple of (should_compress, reason)
         """
-        if not self.config.enable_compression:
+        if not Config.MEMORY_ENABLED:
             return False, "compression_disabled"
 
         # Hard limit: must compress
-        if self.current_tokens > self.config.compression_threshold:
-            return True, f"hard_limit ({self.current_tokens} > {self.config.compression_threshold})"
+        if self.current_tokens > Config.MEMORY_COMPRESSION_THRESHOLD:
+            return (
+                True,
+                f"hard_limit ({self.current_tokens} > {Config.MEMORY_COMPRESSION_THRESHOLD})",
+            )
 
         # CRITICAL: Compress when short-term memory is full to prevent eviction
         # If we don't compress, the next message will cause deque to evict the oldest message,
@@ -336,15 +333,15 @@ class MemoryManager:
         if self.short_term.is_full():
             return (
                 True,
-                f"short_term_full ({self.short_term.count()}/{self.config.short_term_message_count} messages, "
+                f"short_term_full ({self.short_term.count()}/{Config.MEMORY_SHORT_TERM_SIZE} messages, "
                 f"current tokens: {self.current_tokens})",
             )
 
         # Soft limit: compress if over target token count
-        if self.current_tokens > self.config.target_working_memory_tokens:
+        if self.current_tokens > Config.MEMORY_TARGET_TOKENS:
             return (
                 True,
-                f"soft_limit ({self.current_tokens} > {self.config.target_working_memory_tokens})",
+                f"soft_limit ({self.current_tokens} > {Config.MEMORY_TARGET_TOKENS})",
             )
 
         return False, None
@@ -396,7 +393,7 @@ class MemoryManager:
             Target token count
         """
         original_tokens = self.current_tokens
-        target = int(original_tokens * self.config.compression_ratio)
+        target = int(original_tokens * Config.MEMORY_COMPRESSION_RATIO)
         return max(target, 500)  # Minimum 500 tokens for summary
 
     def _get_orphaned_tool_use_ids_from_summaries(self) -> set:
@@ -459,7 +456,7 @@ class MemoryManager:
             result_tokens = self.tool_result_processor.estimate_tokens(result)
             logger.info(
                 f"Storing large tool result externally: {tool_name} "
-                f"({result_tokens} tokens > {self.config.tool_result_storage_threshold})"
+                f"({result_tokens} tokens > {Config.TOOL_RESULT_STORAGE_THRESHOLD})"
             )
 
             # Store full result
@@ -540,7 +537,7 @@ class MemoryManager:
             "short_term_count": self.short_term.count(),
             "summary_count": len(self.summaries),
             "total_cost": self.token_tracker.get_total_cost(self.llm.model),
-            "budget_status": self.token_tracker.get_budget_status(self.config.max_context_tokens),
+            "budget_status": self.token_tracker.get_budget_status(Config.MEMORY_MAX_CONTEXT_TOKENS),
         }
 
     def save_memory(self):

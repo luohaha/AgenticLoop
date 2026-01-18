@@ -379,9 +379,7 @@ class CodeExtractor:
 
         return definitions
 
-    def format_extracted_code(
-        self, content: str, filename: str, max_tokens: int
-    ) -> str:
+    def format_extracted_code(self, content: str, filename: str, max_tokens: int) -> str:
         """Format extracted code with key definitions.
 
         Args:

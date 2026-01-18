@@ -10,8 +10,9 @@ import sys
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config import Config
 from llm import LLMMessage
-from memory import MemoryConfig, MemoryManager
+from memory import MemoryManager
 
 
 class MockLLM:
@@ -41,22 +42,21 @@ def main():
     print("Memory Management System Demo")
     print("=" * 60)
 
-    # Create memory manager with custom config
-    config = MemoryConfig(
-        max_context_tokens=10000,
-        target_working_memory_tokens=500,  # Low threshold for demo
-        compression_threshold=400,  # Trigger compression quickly
-        short_term_message_count=5,
-        compression_ratio=0.3,
-    )
+    # Configure memory settings directly via Config class
+    # (In production, these would be set via environment variables)
+    Config.MEMORY_MAX_CONTEXT_TOKENS = 10000
+    Config.MEMORY_TARGET_TOKENS = 500  # Low threshold for demo
+    Config.MEMORY_COMPRESSION_THRESHOLD = 400  # Trigger compression quickly
+    Config.MEMORY_SHORT_TERM_SIZE = 5
+    Config.MEMORY_COMPRESSION_RATIO = 0.3
 
     mock_llm = MockLLM()
-    memory = MemoryManager(config, mock_llm)
+    memory = MemoryManager(mock_llm)
 
     print("\nConfiguration:")
-    print(f"  Target tokens: {config.target_working_memory_tokens}")
-    print(f"  Compression threshold: {config.compression_threshold}")
-    print(f"  Short-term size: {config.short_term_message_count}")
+    print(f"  Target tokens: {Config.MEMORY_TARGET_TOKENS}")
+    print(f"  Compression threshold: {Config.MEMORY_COMPRESSION_THRESHOLD}")
+    print(f"  Short-term size: {Config.MEMORY_SHORT_TERM_SIZE}")
 
     # Add system message
     print("\n1. Adding system message...")

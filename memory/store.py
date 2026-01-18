@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from llm.base import LLMMessage
-from memory.types import CompressedMemory, MemoryConfig
+from memory.types import CompressedMemory
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +61,11 @@ class MemoryStore:
             conn.commit()
             logger.debug("Database schema initialized")
 
-    def create_session(
-        self, metadata: Optional[Dict[str, Any]] = None, config: Optional[MemoryConfig] = None
-    ) -> str:
+    def create_session(self, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Create a new session.
 
         Args:
             metadata: Optional session metadata (description, tags, etc.)
-            config: Memory configuration for this session
 
         Returns:
             Session ID (UUID)
