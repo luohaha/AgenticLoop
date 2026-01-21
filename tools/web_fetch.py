@@ -10,10 +10,9 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
-import html2text
 import requests
+import trafilatura
 from lxml import html as lxml_html
-from readability import Document
 from requests.utils import get_encoding_from_headers
 
 from .base import BaseTool
@@ -178,6 +177,14 @@ class WebFetchTool(BaseTool):
 
         if saved_path:
             metadata["saved_to"] = saved_path
+            # When saved to file, don't include full content in result to save tokens
+            # User can access content via read_file or grep_content
+            return {
+                "ok": True,
+                "title": title,
+                "output": f"Content saved to: {saved_path}\nUse read_file or grep_content to access the content.",
+                "metadata": metadata,
+            }
 
         return {
             "ok": True,
@@ -431,31 +438,31 @@ class WebFetchTool(BaseTool):
         )
 
     def _render_html(self, html: str, format: str, url: str) -> Tuple[str, str]:
+        # Extract title from HTML
+        title = url
         try:
-            document = Document(html)
-            main_html = document.summary(html_partial=True)
-            title = document.short_title() or url
+            tree = lxml_html.fromstring(html)
+            title_elem = tree.find(".//title")
+            if title_elem is not None and title_elem.text:
+                title = title_elem.text.strip()
         except Exception:
-            main_html = html
-            title = url
+            pass
 
         if format == "markdown":
-            converter = html2text.HTML2Text()
-            converter.body_width = 0
-            converter.ignore_images = True
-            converter.ignore_emphasis = False
-            converter.ignore_links = False
-            converter.unicode_snob = True
-            if hasattr(converter, "code_style"):
-                setattr(converter, "code_style", "fenced")
-            return converter.handle(main_html).strip(), title
+            # Use trafilatura for markdown extraction
+            result = trafilatura.extract(
+                html,
+                include_links=True,
+                include_formatting=True,
+                include_tables=True,
+                output_format="markdown",
+            )
+            if result:
+                return result.strip(), title
+            # Fallback: extract as text if markdown fails
+            result = trafilatura.extract(html)
+            return result.strip() if result else "", title
 
-        try:
-            tree = lxml_html.fromstring(main_html)
-        except Exception:
-            return " ".join(main_html.split()), title
-
-        for node in tree.xpath(HTML_STRIP_XPATH):
-            node.drop_tree()
-        text = tree.text_content()
-        return " ".join(text.split()), title
+        # For text format, use trafilatura without formatting
+        result = trafilatura.extract(html, include_links=False, include_formatting=False)
+        return result.strip() if result else "", title

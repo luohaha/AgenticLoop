@@ -13,20 +13,6 @@ from tools.calculator import CalculatorTool
 from tools.code_navigator import CodeNavigatorTool
 from tools.delegation import DelegationTool
 from tools.file_ops import FileReadTool, FileSearchTool, FileWriteTool
-from tools.git_tools import (
-    GitAddTool,
-    GitBranchTool,
-    GitCheckoutTool,
-    GitCleanTool,
-    GitCommitTool,
-    GitDiffTool,
-    GitLogTool,
-    GitPullTool,
-    GitPushTool,
-    GitRemoteTool,
-    GitStashTool,
-    GitStatusTool,
-)
 from tools.shell import ShellTool
 from tools.smart_edit import SmartEditTool
 from tools.web_fetch import WebFetchTool
@@ -59,19 +45,6 @@ def create_agent(mode: str = "react"):
         SmartEditTool(),
         CodeNavigatorTool(),
         ShellTool(),
-        # Git tools
-        GitStatusTool(),
-        GitDiffTool(),
-        GitAddTool(),
-        GitCommitTool(),
-        GitLogTool(),
-        GitBranchTool(),
-        GitCheckoutTool(),
-        GitPushTool(),
-        GitPullTool(),
-        GitRemoteTool(),
-        GitStashTool(),
-        GitCleanTool(),
     ]
 
     # Create LLM instance with LiteLLM (retry config is read from Config directly)
