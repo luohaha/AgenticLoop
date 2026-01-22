@@ -122,7 +122,10 @@ class WebFetchTool(BaseTool):
         return (
             "Fetch content from a URL and convert to markdown, text, or HTML. "
             "Returns JSON with ok/output/metadata or error_code/message. "
-            "Use save_to parameter to save content to a local file for later grep/search."
+            "Use save_to parameter to save content to a local file for later grep/search. "
+            "IMPORTANT: When using save_to, the response will NOT contain the actual content - "
+            "only a confirmation that the file was saved. You MUST use read_file or grep_content "
+            "to access the saved content before using it."
         )
 
     @property
@@ -148,7 +151,9 @@ class WebFetchTool(BaseTool):
                 "description": (
                     "Optional file path to save the fetched content. "
                     "Parent directories will be created if needed. "
-                    "Useful for saving content to search later with grep_content."
+                    "WARNING: When this parameter is used, the response will only contain "
+                    "a save confirmation, NOT the actual content. You MUST call read_file "
+                    "or grep_content afterwards to access the content."
                 ),
             },
             "use_cache": {
