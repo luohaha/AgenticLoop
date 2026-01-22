@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from llm.base import LLMMessage
+from llm.message_types import LLMMessage
 from memory.types import CompressedMemory
 
 logger = logging.getLogger(__name__)
@@ -120,14 +120,10 @@ class MemoryStore:
 
             messages = json.loads(row[0]) if row[0] else []
 
-            # Append new message with serialized content
-            messages.append(
-                {
-                    "role": message.role,
-                    "content": self._serialize_content(message.content),
-                    "tokens": tokens,
-                }
-            )
+            # Append new message with serialized content (using new format)
+            msg_data = self._serialize_message(message)
+            msg_data["tokens"] = tokens
+            messages.append(msg_data)
 
             # Update the field
             cursor.execute(
@@ -189,7 +185,9 @@ class MemoryStore:
         Returns:
             JSON-serializable content
         """
-        if isinstance(content, str):
+        if content is None:
+            return None
+        elif isinstance(content, str):
             return content
         elif isinstance(content, (list, dict)):
             # Content is already a structure, ensure it's JSON-serializable
@@ -203,6 +201,54 @@ class MemoryStore:
         else:
             # Unknown type, convert to string
             return str(content)
+
+    def _serialize_message(self, message: LLMMessage) -> Dict[str, Any]:
+        """Serialize an LLMMessage to a JSON-serializable dict.
+
+        Handles both new format (with tool_calls, tool_call_id, name) and
+        legacy format (content only).
+
+        Args:
+            message: LLMMessage to serialize
+
+        Returns:
+            JSON-serializable dict
+        """
+        result = {
+            "role": message.role,
+            "content": self._serialize_content(message.content),
+        }
+
+        # Add new format fields if present
+        if hasattr(message, "tool_calls") and message.tool_calls:
+            result["tool_calls"] = message.tool_calls
+
+        if hasattr(message, "tool_call_id") and message.tool_call_id:
+            result["tool_call_id"] = message.tool_call_id
+
+        if hasattr(message, "name") and message.name:
+            result["name"] = message.name
+
+        return result
+
+    def _deserialize_message(self, data: Dict[str, Any]) -> LLMMessage:
+        """Deserialize a dict to an LLMMessage.
+
+        Handles both new format and legacy format.
+
+        Args:
+            data: Dict with message data
+
+        Returns:
+            LLMMessage instance
+        """
+        return LLMMessage(
+            role=data["role"],
+            content=data.get("content"),
+            tool_calls=data.get("tool_calls"),
+            tool_call_id=data.get("tool_call_id"),
+            name=data.get("name"),
+        )
 
     def save_memory(
         self,
@@ -231,21 +277,18 @@ class MemoryStore:
                 logger.warning(f"Session {session_id} not found")
                 return
 
-            # Serialize system messages
+            # Serialize system messages using new format
             system_messages_json = json.dumps(
-                [
-                    {"role": msg.role, "content": self._serialize_content(msg.content)}
-                    for msg in system_messages
-                ]
+                [self._serialize_message(msg) for msg in system_messages]
             )
 
-            # Serialize regular messages
-            messages_json = json.dumps(
-                [
-                    {"role": msg.role, "content": self._serialize_content(msg.content), "tokens": 0}
-                    for msg in messages
-                ]
-            )
+            # Serialize regular messages using new format
+            messages_list = []
+            for msg in messages:
+                msg_data = self._serialize_message(msg)
+                msg_data["tokens"] = 0
+                messages_list.append(msg_data)
+            messages_json = json.dumps(messages_list)
 
             # Serialize summaries
             summaries_json = json.dumps(
@@ -253,8 +296,7 @@ class MemoryStore:
                     {
                         "summary": summary.summary,
                         "preserved_messages": [
-                            {"role": msg.role, "content": self._serialize_content(msg.content)}
-                            for msg in summary.preserved_messages
+                            self._serialize_message(msg) for msg in summary.preserved_messages
                         ],
                         "original_message_count": summary.original_message_count,
                         "original_tokens": summary.original_tokens,
@@ -315,19 +357,15 @@ class MemoryStore:
                 logger.warning(f"Session {session_id} not found")
                 return None
 
-            # Parse system messages from JSON
+            # Parse system messages from JSON using new format
             system_messages_data = (
                 json.loads(session_row["system_messages"]) if session_row["system_messages"] else []
             )
-            system_messages = [
-                LLMMessage(role=msg["role"], content=msg["content"]) for msg in system_messages_data
-            ]
+            system_messages = [self._deserialize_message(msg) for msg in system_messages_data]
 
-            # Parse regular messages from JSON
+            # Parse regular messages from JSON using new format
             messages_data = json.loads(session_row["messages"]) if session_row["messages"] else []
-            messages = [
-                LLMMessage(role=msg["role"], content=msg["content"]) for msg in messages_data
-            ]
+            messages = [self._deserialize_message(msg) for msg in messages_data]
 
             # Parse summaries from JSON
             summaries_data = (
@@ -336,8 +374,7 @@ class MemoryStore:
             summaries = []
             for summary_data in summaries_data:
                 preserved_msgs = [
-                    LLMMessage(role=m["role"], content=m["content"])
-                    for m in summary_data.get("preserved_messages", [])
+                    self._deserialize_message(m) for m in summary_data.get("preserved_messages", [])
                 ]
 
                 summaries.append(

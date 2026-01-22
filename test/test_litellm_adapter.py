@@ -2,8 +2,9 @@
 
 from unittest.mock import MagicMock
 
-from llm.base import LLMMessage
+from llm.content_utils import extract_text
 from llm.litellm_adapter import LiteLLMLLM
+from llm.message_types import LLMMessage
 
 
 class TestMessageConversion:
@@ -78,6 +79,7 @@ class TestMessageConversion:
         mock_message = MagicMock()
         mock_message.content = None
         mock_message.role = "assistant"
+        mock_message.tool_calls = None
 
         messages = [LLMMessage(role="assistant", content=mock_message)]
 
@@ -85,8 +87,8 @@ class TestMessageConversion:
 
         assert len(result) == 1
         assert result[0]["role"] == "assistant"
-        # Should handle None gracefully
-        assert result[0]["content"] == "None"
+        # Should handle None gracefully by returning empty string
+        assert result[0]["content"] == ""
 
     def test_extract_content_from_message_with_list_content(self):
         """Test extraction from Message with list content (Anthropic format)."""
@@ -108,28 +110,28 @@ class TestMessageConversion:
         assert "First block" in result[0]["content"]
         assert "Second block" in result[0]["content"]
 
-    def test_extract_assistant_content_with_text_blocks(self):
-        """Test _extract_assistant_content with text blocks."""
+    def test_extract_text_with_text_blocks(self):
+        """Test extract_text with text blocks (using centralized function)."""
         content = [
             {"type": "text", "text": "Hello"},
             {"type": "text", "text": "World"},
         ]
-        result = self.adapter._extract_assistant_content(content)
+        result = extract_text(content)
         assert result == "Hello\nWorld"
 
-    def test_extract_assistant_content_with_objects_having_text_attr(self):
-        """Test _extract_assistant_content with objects having text attribute."""
+    def test_extract_text_with_objects_having_text_attr(self):
+        """Test extract_text with objects having text attribute."""
         block1 = MagicMock()
         block1.text = "First"
         block2 = MagicMock()
         block2.text = "Second"
 
         content = [block1, block2]
-        result = self.adapter._extract_assistant_content(content)
+        result = extract_text(content)
         assert result == "First\nSecond"
 
-    def test_convert_tool_results_to_text(self):
-        """Test conversion of tool results to text format."""
+    def test_convert_anthropic_tool_results_to_tool_messages(self):
+        """Test conversion of Anthropic tool_result format to OpenAI tool messages."""
         content = [
             {
                 "type": "tool_result",
@@ -142,12 +144,14 @@ class TestMessageConversion:
                 "content": "More results",
             },
         ]
-        result = self.adapter._convert_tool_results_to_text(content)
+        result = self.adapter._convert_anthropic_tool_results(content)
 
-        assert "call_123" in result
-        assert "Result data" in result
-        assert "call_456" in result
-        assert "More results" in result
+        assert len(result) == 2
+        assert result[0]["role"] == "tool"
+        assert result[0]["content"] == "Result data"
+        assert result[0]["tool_call_id"] == "call_123"
+        assert result[1]["content"] == "More results"
+        assert result[1]["tool_call_id"] == "call_456"
 
     def test_mixed_message_types(self):
         """Test conversion of mixed message types."""

@@ -4,7 +4,8 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from config import Config
-from llm.base import LLMMessage
+from llm.content_utils import content_has_tool_calls
+from llm.message_types import LLMMessage
 
 from .compressor import WorkingMemoryCompressor
 from .short_term import ShortTermMemory
@@ -361,19 +362,24 @@ class MemoryManager:
     def _message_has_tool_calls(self, message: LLMMessage) -> bool:
         """Check if message contains tool calls.
 
+        Handles both new format (tool_calls field) and legacy format (content blocks).
+
         Args:
             message: Message to check
 
         Returns:
             True if contains tool calls
         """
-        content = message.content
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") in ["tool_use", "tool_result", "tool_calls"]:
-                        return True
-        return False
+        # New format: check tool_calls field
+        if hasattr(message, "tool_calls") and message.tool_calls:
+            return True
+
+        # New format: tool role message
+        if message.role == "tool":
+            return True
+
+        # Legacy/centralized check on content
+        return content_has_tool_calls(message.content)
 
     def _calculate_target_tokens(self) -> int:
         """Calculate target token count for compression.

@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from llm import LLMMessage, LLMResponse, ToolResult
+from llm import LLMMessage, LLMResponse, StopReason, ToolResult
 from memory import MemoryManager
 from tools.base import BaseTool
 from tools.todo import TodoTool
@@ -126,8 +126,8 @@ class BaseAgent(ABC):
             # Call LLM with tools
             response = self._call_llm(messages=context, tools=tools)
 
-            # Save assistant response
-            assistant_msg = LLMMessage(role="assistant", content=response.message)
+            # Save assistant response using response.to_message() for proper format
+            assistant_msg = response.to_message()
             if use_memory:
                 if save_to_memory:
                     # Extract actual token usage from response
@@ -156,14 +156,14 @@ class BaseAgent(ABC):
                 messages.append(assistant_msg)
 
             # Check if we're done (no tool calls)
-            if response.stop_reason == "end_turn":
+            if response.stop_reason == StopReason.STOP:
                 final_answer = self._extract_text(response)
                 if verbose:
                     terminal_ui.console.print("\n[bold green]✓ Final answer received[/bold green]")
                 return final_answer
 
             # Execute tool calls
-            if response.stop_reason == "tool_use":
+            if response.stop_reason == StopReason.TOOL_CALLS:
                 tool_calls = self.llm.extract_tool_calls(response)
 
                 if not tool_calls:
@@ -212,14 +212,25 @@ class BaseAgent(ABC):
                     # Log result (truncated)
                     logger.debug(f"Tool result: {result[:200]}{'...' if len(result) > 200 else ''}")
 
-                    tool_results.append(ToolResult(tool_call_id=tc.id, content=result))
+                    tool_results.append(
+                        ToolResult(tool_call_id=tc.id, content=result, name=tc.name)
+                    )
 
                 # Format tool results and add to context
-                result_message = self.llm.format_tool_results(tool_results)
-                if use_memory and save_to_memory:
-                    self.memory.add_message(result_message)
+                # format_tool_results now returns a list of tool messages (OpenAI format)
+                result_messages = self.llm.format_tool_results(tool_results)
+                if isinstance(result_messages, list):
+                    for msg in result_messages:
+                        if use_memory and save_to_memory:
+                            self.memory.add_message(msg)
+                        else:
+                            messages.append(msg)
                 else:
-                    messages.append(result_message)
+                    # Backward compatibility: single message
+                    if use_memory and save_to_memory:
+                        self.memory.add_message(result_messages)
+                    else:
+                        messages.append(result_messages)
 
         return "Max iterations reached without completion."
 

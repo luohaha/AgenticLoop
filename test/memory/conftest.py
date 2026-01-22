@@ -3,7 +3,7 @@
 import pytest
 
 from config import Config
-from llm.base import LLMMessage, LLMResponse
+from llm.message_types import LLMMessage, LLMResponse, StopReason
 
 
 @pytest.fixture
@@ -39,16 +39,17 @@ class MockLLM:
         self.call_count += 1
         self.last_messages = messages
 
+        # Use new LLMResponse format with content instead of message
         return LLMResponse(
-            message=self.response_text,
-            stop_reason="end_turn",
+            content=self.response_text,
+            stop_reason=StopReason.STOP,
             usage={"input_tokens": 100, "output_tokens": 50},
         )
 
     def extract_text(self, response):
         """Extract text from response."""
         if isinstance(response, LLMResponse):
-            return response.message
+            return response.content or ""
         return response.content if hasattr(response, "content") else str(response)
 
     def extract_tool_calls(self, response):
@@ -56,8 +57,10 @@ class MockLLM:
         return []
 
     def format_tool_results(self, results):
-        """Format tool results."""
-        return LLMMessage(role="user", content=[{"type": "tool_result", "content": "result"}])
+        """Format tool results as list of tool messages (new format)."""
+        return [
+            LLMMessage(role="tool", content=r.content, tool_call_id=r.tool_call_id) for r in results
+        ]
 
     @property
     def supports_tools(self):

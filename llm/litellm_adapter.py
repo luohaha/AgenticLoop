@@ -2,13 +2,21 @@
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import litellm
 
 from utils import get_logger
 
-from .base import LLMMessage, LLMResponse, ToolCall, ToolResult
+from .content_utils import extract_text, extract_tool_calls_from_content
+from .message_types import (
+    LLMMessage,
+    LLMResponse,
+    StopReason,
+    ToolCall,
+    ToolCallBlock,
+    ToolResult,
+)
 from .retry import with_retry
 
 logger = get_logger(__name__)
@@ -124,70 +132,99 @@ class LiteLLMLLM:
         return self._convert_response(response)
 
     def _convert_messages(self, messages: List[LLMMessage]) -> List[Dict]:
-        """Convert LLMMessage to LiteLLM format (OpenAI-compatible)."""
+        """Convert LLMMessage to LiteLLM format (OpenAI-compatible).
+
+        Handles both new format (tool_calls field, tool role) and legacy format
+        (tool_result blocks in user content).
+        """
         litellm_messages = []
 
         for msg in messages:
             # Handle system messages
             if msg.role == "system":
-                litellm_messages.append({"role": "system", "content": msg.content})
+                content = msg.content if isinstance(msg.content, str) else extract_text(msg.content)
+                litellm_messages.append({"role": "system", "content": content})
+
+            # Handle tool messages (new OpenAI format)
+            elif msg.role == "tool":
+                litellm_messages.append(
+                    {
+                        "role": "tool",
+                        "content": msg.content or "",
+                        "tool_call_id": msg.tool_call_id or "",
+                    }
+                )
 
             # Handle user messages
             elif msg.role == "user":
                 if isinstance(msg.content, str):
                     litellm_messages.append({"role": "user", "content": msg.content})
                 elif isinstance(msg.content, list):
-                    # Handle tool results (Anthropic format)
-                    content = self._convert_tool_results_to_text(msg.content)
+                    # Legacy: Handle tool results (Anthropic format)
+                    # Convert to tool messages for OpenAI compatibility
+                    tool_messages = self._convert_anthropic_tool_results(msg.content)
+                    if tool_messages:
+                        litellm_messages.extend(tool_messages)
+                    else:
+                        # Not tool results, extract text
+                        content = extract_text(msg.content)
+                        litellm_messages.append({"role": "user", "content": content})
+                else:
+                    content = extract_text(msg.content)
                     litellm_messages.append({"role": "user", "content": content})
 
             # Handle assistant messages
             elif msg.role == "assistant":
-                if isinstance(msg.content, str):
-                    litellm_messages.append({"role": "assistant", "content": msg.content})
+                assistant_msg: Dict[str, Any] = {"role": "assistant"}
+
+                # New format: tool_calls field
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    assistant_msg["tool_calls"] = msg.tool_calls
+                    # Content can be None or text
+                    if msg.content:
+                        assistant_msg["content"] = msg.content
+                    else:
+                        assistant_msg["content"] = None
+                # Simple string content
+                elif isinstance(msg.content, str):
+                    assistant_msg["content"] = msg.content
+                # Legacy: complex content (may contain tool calls)
                 else:
-                    # Handle complex content (tool calls, etc.)
-                    content = self._extract_assistant_content(msg.content)
-                    if content:
-                        litellm_messages.append({"role": "assistant", "content": content})
+                    # Extract tool calls from legacy format
+                    tool_calls = extract_tool_calls_from_content(msg.content)
+                    if tool_calls:
+                        assistant_msg["tool_calls"] = tool_calls
+                        # Also extract any text content
+                        text = extract_text(msg.content)
+                        assistant_msg["content"] = text if text else None
+                    else:
+                        content = extract_text(msg.content)
+                        assistant_msg["content"] = content if content else ""
+
+                litellm_messages.append(assistant_msg)
 
         return litellm_messages
 
-    def _convert_tool_results_to_text(self, content: List) -> str:
-        """Convert Anthropic tool_result format to text for LiteLLM."""
-        # LiteLLM handles tool results as text in user messages
-        results = []
+    def _convert_anthropic_tool_results(self, content: List) -> List[Dict]:
+        """Convert Anthropic tool_result format to OpenAI tool messages.
+
+        Args:
+            content: List of content blocks potentially containing tool_result
+
+        Returns:
+            List of tool messages in OpenAI format, or empty list if not tool results
+        """
+        tool_messages = []
         for block in content:
             if isinstance(block, dict) and block.get("type") == "tool_result":
-                tool_id = block.get("tool_use_id", "unknown")
-                tool_content = block.get("content", "")
-                results.append(f"Tool result (ID: {tool_id}):\n{tool_content}")
-        return "\n\n".join(results) if results else str(content)
-
-    def _extract_assistant_content(self, content: Any) -> str:
-        """Extract text from assistant content."""
-        if isinstance(content, str):
-            return content
-
-        # Handle Message objects (from previous LLM responses)
-        # This prevents nested Message objects from being stringified
-        if hasattr(content, "content"):
-            return self._extract_assistant_content(content.content)
-
-        # Handle Anthropic content blocks
-        if isinstance(content, list):
-            texts = []
-            for block in content:
-                if hasattr(block, "text"):
-                    texts.append(block.text)
-                elif isinstance(block, dict):
-                    if "text" in block:
-                        texts.append(block["text"])
-                    elif block.get("type") == "text":
-                        texts.append(block.get("text", ""))
-            return "\n".join(texts) if texts else ""
-
-        return str(content)
+                tool_messages.append(
+                    {
+                        "role": "tool",
+                        "content": block.get("content", ""),
+                        "tool_call_id": block.get("tool_use_id", ""),
+                    }
+                )
+        return tool_messages
 
     def _clean_message(self, message) -> None:
         """Clean up unnecessary fields from message to reduce memory usage.
@@ -227,24 +264,34 @@ class LiteLLMLLM:
         return openai_tools
 
     def _convert_response(self, response) -> LLMResponse:
-        """Convert LiteLLM response to LLMResponse."""
-        # Extract message
+        """Convert LiteLLM response to LLMResponse with normalized content.
+
+        Key change: Instead of storing the raw message object, we extract
+        and normalize all content to ensure JSON serializability.
+        """
+        # Extract message from response
         message = response.choices[0].message
 
         # Clean up provider_specific_fields (removes thought_signature, etc.)
-        # These fields are large and not useful for agent operation
         self._clean_message(message)
 
-        # Determine stop reason
+        # Determine stop reason (normalize to OpenAI format)
         finish_reason = response.choices[0].finish_reason
-        if finish_reason == "tool_calls":
-            stop_reason = "tool_use"
-        elif finish_reason == "stop":
-            stop_reason = "end_turn"
-        elif finish_reason == "length":
-            stop_reason = "max_tokens"
-        else:
-            stop_reason = finish_reason or "end_turn"
+        stop_reason = StopReason.normalize(finish_reason or "stop")
+
+        # Extract text content
+        content = None
+        if hasattr(message, "content") and message.content:
+            content = (
+                message.content
+                if isinstance(message.content, str)
+                else extract_text(message.content)
+            )
+
+        # Extract and normalize tool calls
+        tool_calls = None
+        if hasattr(message, "tool_calls") and message.tool_calls:
+            tool_calls = self._normalize_tool_calls(message.tool_calls)
 
         # Extract token usage
         usage_dict = None
@@ -254,45 +301,53 @@ class LiteLLMLLM:
                 "output_tokens": response.usage.get("completion_tokens", 0),
             }
 
-        return LLMResponse(message=message, stop_reason=stop_reason, usage=usage_dict)
+        # Extract thinking content
+        thinking = self._extract_thinking_from_message(message)
 
-    def extract_text(self, response: LLMResponse) -> str:
-        """Extract text from LiteLLM response."""
-        message = response.message
-        return message.content if hasattr(message, "content") and message.content else ""
+        return LLMResponse(
+            content=content,
+            tool_calls=tool_calls,
+            stop_reason=stop_reason,
+            usage=usage_dict,
+            thinking=thinking,
+        )
 
-    def extract_tool_calls(self, response: LLMResponse) -> List[ToolCall]:
-        """Extract tool calls from LiteLLM response."""
-        tool_calls = []
-        message = response.message
-
-        if hasattr(message, "tool_calls") and message.tool_calls:
-            for tc in message.tool_calls:
-                tool_calls.append(
-                    ToolCall(
-                        id=tc.id, name=tc.function.name, arguments=json.loads(tc.function.arguments)
-                    )
-                )
-        else:
-            logger.debug(f"No tool calls found in the response. {message}")
-
-        return tool_calls
-
-    def extract_thinking(self, response: LLMResponse) -> Optional[str]:
-        """Extract thinking/reasoning content from LLM response.
-
-        Anthropic's extended thinking feature returns thinking content in various ways:
-        - message.thinking_blocks (list of thinking blocks)
-        - message.reasoning_content (OpenAI o1 style)
-        - content blocks with type="thinking"
+    def _normalize_tool_calls(self, tool_calls: List) -> List[ToolCallBlock]:
+        """Normalize tool calls to OpenAI format.
 
         Args:
-            response: LLM response
+            tool_calls: List of tool calls from LiteLLM response
 
         Returns:
-            Thinking content string or None if not present
+            List of ToolCallBlock in standard format
         """
-        message = response.message
+        normalized: List[ToolCallBlock] = []
+        for tc in tool_calls:
+            # Get arguments as string
+            arguments = tc.function.arguments
+            if not isinstance(arguments, str):
+                arguments = json.dumps(arguments)
+
+            tool_call: ToolCallBlock = {
+                "id": tc.id,
+                "type": "function",
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": arguments,
+                },
+            }
+            normalized.append(tool_call)
+        return normalized
+
+    def _extract_thinking_from_message(self, message) -> Optional[str]:
+        """Extract thinking/reasoning content from message.
+
+        Args:
+            message: Message object from LiteLLM response
+
+        Returns:
+            Thinking content string or None
+        """
         thinking_parts = []
 
         # Check for thinking_blocks (Anthropic extended thinking via LiteLLM)
@@ -319,21 +374,69 @@ class LiteLLMLLM:
 
         return "\n\n".join(thinking_parts) if thinking_parts else None
 
-    def format_tool_results(self, results: List[ToolResult]) -> LLMMessage:
-        """Format tool results for LiteLLM."""
-        # LiteLLM expects tool results as user messages
-        # Format as Anthropic-style for compatibility with existing code
-        content = []
-        for result in results:
-            content.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": result.tool_call_id,
-                    "content": result.content,
-                }
+    def extract_text(self, response: LLMResponse) -> str:
+        """Extract text from LLMResponse.
+
+        With the new format, content is already extracted and normalized.
+        """
+        return response.content or ""
+
+    def extract_tool_calls(self, response: LLMResponse) -> List[ToolCall]:
+        """Extract tool calls from LLMResponse.
+
+        With the new format, tool_calls are already normalized to OpenAI format.
+        This method parses the JSON arguments into dicts.
+        """
+        if not response.tool_calls:
+            return []
+
+        tool_calls = []
+        for tc in response.tool_calls:
+            try:
+                arguments = json.loads(tc["function"]["arguments"])
+            except (json.JSONDecodeError, KeyError):
+                arguments = {}
+
+            tool_calls.append(
+                ToolCall(
+                    id=tc["id"],
+                    name=tc["function"]["name"],
+                    arguments=arguments,
+                )
             )
 
-        return LLMMessage(role="user", content=content)
+        return tool_calls
+
+    def extract_thinking(self, response: LLMResponse) -> Optional[str]:
+        """Extract thinking/reasoning content from LLMResponse.
+
+        With the new format, thinking is already extracted during response conversion.
+        """
+        return response.thinking
+
+    def format_tool_results(self, results: List[ToolResult]) -> Union[LLMMessage, List[LLMMessage]]:
+        """Format tool results for LiteLLM in OpenAI format.
+
+        Returns a list of tool messages, one per result. This is the standard
+        OpenAI format that LiteLLM expects for tool responses.
+
+        Args:
+            results: List of ToolResult objects
+
+        Returns:
+            List of LLMMessages with role="tool"
+        """
+        messages = []
+        for result in results:
+            messages.append(
+                LLMMessage(
+                    role="tool",
+                    content=result.content,
+                    tool_call_id=result.tool_call_id,
+                    name=result.name if hasattr(result, "name") else None,
+                )
+            )
+        return messages
 
     @property
     def supports_tools(self) -> bool:

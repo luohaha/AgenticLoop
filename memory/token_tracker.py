@@ -3,7 +3,8 @@
 import logging
 from typing import Dict
 
-from llm.base import LLMMessage
+from llm.content_utils import extract_text
+from llm.message_types import LLMMessage
 from utils.model_pricing import MODEL_PRICING
 
 logger = logging.getLogger(__name__)
@@ -46,28 +47,18 @@ class TokenTracker:
             return len(str(content)) // 4
 
     def _extract_content(self, message) -> str:
-        """Extract text content from message."""
-        content = message.content
+        """Extract text content from message.
 
-        # Handle different content formats
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            # Content blocks (Anthropic format)
-            text_parts = []
-            for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
-                        # Include tool use in token count
-                        text_parts.append(str(block))
-                    elif block.get("type") == "tool_result":
-                        # Include tool results in token count
-                        text_parts.append(str(block))
-            return "\n".join(text_parts)
-        else:
-            return str(content)
+        Uses centralized extract_text from content_utils.
+        """
+        # Use centralized extraction
+        text = extract_text(message.content)
+
+        # For token counting, also include tool calls as string representation
+        if hasattr(message, "tool_calls") and message.tool_calls:
+            text += "\n" + str(message.tool_calls)
+
+        return text if text else str(message.content)
 
     def _count_openai_tokens(self, text: str, model: str) -> int:
         """Count tokens using tiktoken for OpenAI models."""

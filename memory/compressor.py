@@ -4,7 +4,8 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from config import Config
-from llm.base import LLMMessage
+from llm.content_utils import extract_text
+from llm.message_types import LLMMessage
 
 from .types import CompressedMemory, CompressionStrategy
 
@@ -319,17 +320,28 @@ Original messages ({count} messages, ~{tokens} tokens):
     def _find_tool_pairs(self, messages: List[LLMMessage]) -> tuple[List[List[int]], List[int]]:
         """Find tool_use/tool_result pairs in messages.
 
+        Handles both:
+        - New format: assistant.tool_calls + tool role messages
+        - Legacy format: tool_use blocks in assistant content + tool_result blocks in user content
+
         Returns:
             Tuple of (pairs, orphaned_tool_use_indices)
-            - pairs: List of [assistant_index, user_index] for matched pairs
+            - pairs: List of [assistant_index, tool_response_index] for matched pairs
             - orphaned_tool_use_indices: List of message indices with unmatched tool_use
         """
         pairs = []
         pending_tool_uses = {}  # tool_id -> message_index
 
         for i, msg in enumerate(messages):
-            if msg.role == "assistant" and isinstance(msg.content, list):
-                # Collect tool_use IDs
+            # New format: assistant with tool_calls field
+            if msg.role == "assistant" and hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tool_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                    if tool_id:
+                        pending_tool_uses[tool_id] = i
+
+            # Legacy format: assistant with tool_use blocks in content
+            elif msg.role == "assistant" and isinstance(msg.content, list):
                 for block in msg.content:
                     btype = self._get_block_attr(block, "type")
                     if btype == "tool_use":
@@ -337,8 +349,16 @@ Original messages ({count} messages, ~{tokens} tokens):
                         if tool_id:
                             pending_tool_uses[tool_id] = i
 
+            # New format: tool role message
+            elif msg.role == "tool" and hasattr(msg, "tool_call_id") and msg.tool_call_id:
+                tool_call_id = msg.tool_call_id
+                if tool_call_id in pending_tool_uses:
+                    assistant_idx = pending_tool_uses[tool_call_id]
+                    pairs.append([assistant_idx, i])
+                    del pending_tool_uses[tool_call_id]
+
+            # Legacy format: user with tool_result blocks in content
             elif msg.role == "user" and isinstance(msg.content, list):
-                # Match tool_result with tool_use
                 for block in msg.content:
                     btype = self._get_block_attr(block, "type")
                     if btype == "tool_result":
@@ -364,29 +384,48 @@ Original messages ({count} messages, ~{tokens} tokens):
     ) -> List[List[int]]:
         """Find tool pairs that use protected tools (must never be compressed).
 
+        Handles both new format (tool_calls field) and legacy format (tool_use blocks).
+
         Args:
             messages: All messages
             tool_pairs: All tool_use/tool_result pairs
 
         Returns:
-            List of protected tool pairs [assistant_index, user_index]
+            List of protected tool pairs [assistant_index, tool_response_index]
         """
         protected_pairs = []
 
-        for assistant_idx, user_idx in tool_pairs:
-            # Check if this tool pair uses a protected tool
+        for assistant_idx, response_idx in tool_pairs:
             msg = messages[assistant_idx]
-            if msg.role == "assistant" and isinstance(msg.content, list):
+
+            # New format: check tool_calls field
+            if msg.role == "assistant" and hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    if isinstance(tc, dict):
+                        tool_name = tc.get("function", {}).get("name", "")
+                    else:
+                        tool_name = (
+                            getattr(tc.function, "name", "") if hasattr(tc, "function") else ""
+                        )
+                    if tool_name in self.PROTECTED_TOOLS:
+                        protected_pairs.append([assistant_idx, response_idx])
+                        logger.debug(
+                            f"Protected tool '{tool_name}' at indices [{assistant_idx}, {response_idx}] - will be preserved"
+                        )
+                        break
+
+            # Legacy format: check tool_use blocks in content
+            elif msg.role == "assistant" and isinstance(msg.content, list):
                 for block in msg.content:
                     btype = self._get_block_attr(block, "type")
                     if btype == "tool_use":
                         tool_name = self._get_block_attr(block, "name")
                         if tool_name in self.PROTECTED_TOOLS:
-                            protected_pairs.append([assistant_idx, user_idx])
+                            protected_pairs.append([assistant_idx, response_idx])
                             logger.debug(
-                                f"Protected tool '{tool_name}' at indices [{assistant_idx}, {user_idx}] - will be preserved"
+                                f"Protected tool '{tool_name}' at indices [{assistant_idx}, {response_idx}] - will be preserved"
                             )
-                            break  # Only need to find one protected tool in the message
+                            break
 
         return protected_pairs
 
@@ -416,33 +455,22 @@ Original messages ({count} messages, ~{tokens} tokens):
     def _extract_text_content(self, message: LLMMessage) -> str:
         """Extract text content from message for token estimation.
 
+        Uses centralized extract_text from content_utils.
+
         Args:
             message: Message to extract from
 
         Returns:
             Text content
         """
-        content = message.content
+        # Use centralized extraction
+        text = extract_text(message.content)
 
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            text_parts = []
-            for block in content:
-                # For dict format
-                if isinstance(block, dict):
-                    if block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                    else:
-                        # For tool_use/tool_result, use simple representation
-                        text_parts.append(str(block))
-                # For object format (ContentBlock from Anthropic SDK)
-                else:
-                    # Simple conversion to string for token estimation
-                    text_parts.append(str(block))
-            return " ".join(text_parts)
-        else:
-            return str(content)
+        # For token estimation, also include tool call info as string representation
+        if hasattr(message, "tool_calls") and message.tool_calls:
+            text += " " + str(message.tool_calls)
+
+        return text if text else str(message.content)
 
     def _estimate_tokens(self, messages: List[LLMMessage]) -> int:
         """Estimate token count for messages.
