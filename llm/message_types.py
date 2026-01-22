@@ -4,12 +4,10 @@ This module defines the standard message formats used throughout the codebase.
 All types follow the OpenAI/LiteLLM format for consistency and serialization.
 """
 
-import json
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Optional
 
-from typing_extensions import NotRequired, TypedDict
-
+from typing_extensions import TypedDict
 
 # =============================================================================
 # Tool Call Types (OpenAI Standard)

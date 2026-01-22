@@ -156,32 +156,40 @@ class MemoryManager:
         # Count tokens (use actual if provided, otherwise estimate)
         if actual_tokens:
             # Use actual token counts from LLM response
+            # Note: input_tokens includes full context sent to API, not just new content
             input_tokens = actual_tokens.get("input", 0)
             output_tokens = actual_tokens.get("output", 0)
-            tokens = input_tokens + output_tokens
 
             self.token_tracker.add_input_tokens(input_tokens)
             self.token_tracker.add_output_tokens(output_tokens)
+
+            # Log API usage separately
+            logger.debug(
+                f"API usage: input={input_tokens}, output={output_tokens}, "
+                f"total={input_tokens + output_tokens}"
+            )
         else:
-            # Estimate token count
+            # Estimate token count for non-API messages (tool results, etc.)
             provider = self.llm.provider_name.lower()
             model = self.llm.model
             tokens = self.token_tracker.count_message_tokens(message, provider, model)
 
-            # Update token count
+            # Update token tracker
             if message.role == "assistant":
                 self.token_tracker.add_output_tokens(tokens)
             else:
                 self.token_tracker.add_input_tokens(tokens)
 
-        self.current_tokens += tokens
-
         # Add to short-term memory
         self.short_term.add_message(message)
 
-        # Log memory state for debugging
+        # Recalculate current tokens based on actual stored content
+        # This gives accurate count for compression decisions
+        self.current_tokens = self._recalculate_current_tokens()
+
+        # Log memory state (stored content size, not API usage)
         logger.debug(
-            f"Memory state: {self.current_tokens} tokens, "
+            f"Memory state: {self.current_tokens} stored tokens, "
             f"{self.short_term.count()}/{Config.MEMORY_SHORT_TERM_SIZE} messages, "
             f"full={self.short_term.is_full()}"
         )
@@ -193,17 +201,12 @@ class MemoryManager:
             logger.info(f"🗜️  Triggering compression: {reason}")
             self.compress()
         else:
-            # Log why compression was NOT triggered
+            # Log compression check details
             logger.debug(
-                f"Compression check: current={self.current_tokens}, "
+                f"Compression check: stored={self.current_tokens}, "
                 f"threshold={Config.MEMORY_COMPRESSION_THRESHOLD}, "
                 f"short_term_full={self.short_term.is_full()}"
             )
-
-        # Recalculate current tokens to account for messages evicted from short-term memory
-        # Note: compress() already recalculates, so only do this if we didn't compress
-        if not self.was_compressed_last_iteration:
-            self.current_tokens = self._recalculate_current_tokens()
 
     def get_context_for_llm(self) -> List[LLMMessage]:
         """Get optimized context for LLM call.

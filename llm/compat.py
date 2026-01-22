@@ -4,10 +4,10 @@ This module provides utilities for converting between old and new message format
 allowing gradual migration while maintaining backward compatibility.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 from .content_utils import extract_text, extract_tool_calls_from_content
-from .message_types import LLMMessage, LLMResponse, StopReason, ToolCallBlock
+from .message_types import LLMMessage, StopReason
 
 
 def ensure_new_format(message: Any) -> LLMMessage:

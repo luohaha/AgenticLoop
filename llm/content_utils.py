@@ -6,7 +6,7 @@ scattered across litellm_adapter.py, compressor.py, and token_tracker.py.
 
 from typing import Any, List, Optional
 
-from .message_types import LLMMessage, LLMResponse, ToolCallBlock
+from .message_types import LLMMessage, ToolCallBlock
 
 
 def extract_text(content: Any) -> str:
