@@ -16,7 +16,10 @@ class FileReadTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Read contents of a file from the filesystem"
+        return (
+            "Read contents of a file. For large files, use offset and limit "
+            "parameters to read specific portions."
+        )
 
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -24,14 +27,46 @@ class FileReadTool(BaseTool):
             "file_path": {
                 "type": "string",
                 "description": "Path to the file to read",
-            }
+            },
+            "offset": {
+                "type": "integer",
+                "description": "Line number to start from (0-indexed). Default: 0",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of lines to read. If not set, reads entire file.",
+            },
         }
 
-    def execute(self, file_path: str) -> str:
-        """Read and return file contents."""
+    def execute(self, file_path: str, offset: int = 0, limit: int = None) -> str:
+        """Read file with optional pagination."""
         try:
+            # Pre-check file size
+            file_size = os.path.getsize(file_path)
+            estimated_tokens = file_size // self.CHARS_PER_TOKEN
+
+            # If file too large and no pagination, return error
+            if estimated_tokens > self.MAX_TOKENS and limit is None:
+                return (
+                    f"Error: File content (~{estimated_tokens} tokens) exceeds "
+                    f"maximum allowed tokens ({self.MAX_TOKENS}). Please use offset "
+                    f"and limit parameters to read specific portions of the file, "
+                    f"or use grep_content to search for specific content."
+                )
+
             with open(file_path, "r", encoding="utf-8") as f:
-                return f.read()
+                if limit is None:
+                    return f.read()
+                # Pagination mode
+                lines = f.readlines()
+                total_lines = len(lines)
+                selected = lines[offset : offset + limit]
+                result = "".join(selected)
+                # Add context about total lines
+                if offset > 0 or offset + limit < total_lines:
+                    result = f"[Lines {offset+1}-{min(offset+limit, total_lines)} of {total_lines}]\n{result}"
+                return result
+
         except FileNotFoundError:
             return f"Error: File '{file_path}' not found"
         except Exception as e:

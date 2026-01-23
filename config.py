@@ -46,14 +46,6 @@ class Config:
     MEMORY_COMPRESSION_RATIO = float(os.getenv("MEMORY_COMPRESSION_RATIO", "0.3"))
     MEMORY_PRESERVE_SYSTEM_PROMPTS = True
 
-    # Tool Result Processing Configuration
-    # Tools that should never have their results truncated (comma-separated)
-    TOOL_RESULT_BYPASS_TOOLS = (
-        os.getenv("TOOL_RESULT_BYPASS_TOOLS", "").split(",")
-        if os.getenv("TOOL_RESULT_BYPASS_TOOLS")
-        else []
-    )
-
     # Logging Configuration
     LOG_DIR = os.getenv("LOG_DIR", "logs")
     LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()

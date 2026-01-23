@@ -237,7 +237,18 @@ Examples:
                     f"No matches found for pattern '{pattern}' in {files_searched} files searched"
                 )
 
-            return "\n".join(results)
+            output = "\n".join(results)
+
+            # Check output size
+            estimated_tokens = len(output) // self.CHARS_PER_TOKEN
+            if estimated_tokens > self.MAX_TOKENS:
+                return (
+                    f"Error: Grep output (~{estimated_tokens} tokens) exceeds "
+                    f"maximum allowed ({self.MAX_TOKENS}). Please use more specific "
+                    f"file_pattern or pattern to narrow results, or reduce max_matches_per_file."
+                )
+
+            return output
         except Exception as e:
             return f"Error executing grep: {str(e)}"
 

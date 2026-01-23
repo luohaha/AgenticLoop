@@ -36,8 +36,19 @@ class ShellTool(BaseTool):
                 text=True,
                 timeout=30,
             )
-            output = result.stdout if result.stdout else result.stderr
-            return output if output else "Command executed (no output)"
+            output = result.stdout + result.stderr if result.stderr else result.stdout
+            if not output:
+                return "Command executed (no output)"
+
+            # Check output size
+            estimated_tokens = len(output) // self.CHARS_PER_TOKEN
+            if estimated_tokens > self.MAX_TOKENS:
+                return (
+                    f"Error: Command output (~{estimated_tokens} tokens) exceeds "
+                    f"maximum allowed ({self.MAX_TOKENS}). Please pipe output through "
+                    f"head/tail/grep, or redirect to a file and read specific portions."
+                )
+            return output
         except subprocess.TimeoutExpired:
             return "Error: Command timed out after 30 seconds"
         except Exception as e:

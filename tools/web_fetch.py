@@ -294,6 +294,16 @@ class WebFetchTool(BaseTool):
                 "metadata": metadata,
             }
 
+        # Check content size before returning
+        estimated_tokens = len(output) // self.CHARS_PER_TOKEN
+        if estimated_tokens > self.MAX_TOKENS:
+            raise WebFetchError(
+                "content_too_large",
+                f"Page content (~{estimated_tokens} tokens) exceeds maximum allowed ({self.MAX_TOKENS}). "
+                f"Use save_to parameter to save content to a file, then use grep_content to search it.",
+                {"estimated_tokens": estimated_tokens, "max_tokens": self.MAX_TOKENS},
+            )
+
         return {
             "ok": True,
             "title": title,

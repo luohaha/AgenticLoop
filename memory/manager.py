@@ -11,7 +11,6 @@ from .compressor import WorkingMemoryCompressor
 from .short_term import ShortTermMemory
 from .store import MemoryStore
 from .token_tracker import TokenTracker
-from .tool_result_processor import ToolResultProcessor
 from .types import CompressedMemory, CompressionStrategy
 
 logger = logging.getLogger(__name__)
@@ -59,10 +58,6 @@ class MemoryManager:
         self.short_term = ShortTermMemory(max_size=Config.MEMORY_SHORT_TERM_SIZE)
         self.compressor = WorkingMemoryCompressor(llm)
         self.token_tracker = TokenTracker()
-
-        # Initialize tool result processor (with intelligent recovery suggestions)
-        self.tool_result_processor = ToolResultProcessor()
-        logger.info("Tool result processing enabled with intelligent recovery suggestions")
 
         # Storage for system messages (summaries are now stored as regular messages in short_term)
         self.system_messages: List[LLMMessage] = []
@@ -393,38 +388,6 @@ class MemoryManager:
         original_tokens = self.current_tokens
         target = int(original_tokens * Config.MEMORY_COMPRESSION_RATIO)
         return max(target, 500)  # Minimum 500 tokens for summary
-
-    def process_tool_result(
-        self,
-        tool_name: str,
-        tool_call_id: str,
-        result: str,
-        tool_context: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Process a tool result with intelligent truncation and recovery suggestions.
-
-        Args:
-            tool_name: Name of the tool that produced the result
-            tool_call_id: ID of the tool call
-            result: Raw tool result string
-            tool_context: Optional dict with tool-specific context for recovery suggestions
-                         Keys depend on tool: filename, pattern, command, query, url, etc.
-
-        Returns:
-            Processed result (may include recovery suggestions if truncated)
-        """
-        # Process the result through unified processor with tool context
-        processed_result, was_modified = self.tool_result_processor.process_result(
-            tool_name=tool_name,
-            result=result,
-            tool_context=tool_context,
-        )
-
-        if was_modified:
-            result_tokens = self.tool_result_processor.estimate_tokens(result)
-            logger.info(f"Tool result was truncated: {tool_name} ({result_tokens} tokens)")
-
-        return processed_result
 
     def _recalculate_current_tokens(self) -> int:
         """Recalculate current token count from scratch.

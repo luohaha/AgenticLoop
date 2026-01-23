@@ -7,6 +7,10 @@ from typing import Any, Dict
 class BaseTool(ABC):
     """Abstract base class for all tools."""
 
+    # Token limits for tool output size checking
+    MAX_TOKENS = 25000
+    CHARS_PER_TOKEN = 4  # Conservative estimate
+
     @property
     @abstractmethod
     def name(self) -> str:

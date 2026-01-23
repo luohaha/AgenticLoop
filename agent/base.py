@@ -184,30 +184,10 @@ class BaseAgent(ABC):
                         terminal_ui.print_tool_call(tc.name, tc.arguments)
 
                     result = self.tool_executor.execute_tool_call(tc.name, tc.arguments)
-
-                    # Process tool result with intelligent truncation
-                    # All truncation goes through ToolResultProcessor for consistency
-                    # Extract tool context from arguments for recovery suggestions
-                    tool_context = self._extract_tool_context(tc.name, tc.arguments)
-                    if use_memory and self.memory:
-                        result = self.memory.process_tool_result(
-                            tool_name=tc.name,
-                            tool_call_id=tc.id,
-                            result=result,
-                            tool_context=tool_context,
-                        )
-                    else:
-                        # Non-memory mode: still use ToolResultProcessor for consistent truncation
-                        result = self._process_result_standalone(
-                            tool_name=tc.name,
-                            result=result,
-                            tool_context=tool_context,
-                        )
+                    # Tool already handles size limits, no additional processing needed
 
                     if verbose:
-                        # Check if result was truncated/processed
-                        truncated = "[... " in result or "[Tool Result #" in result
-                        terminal_ui.print_tool_result(result, truncated=truncated)
+                        terminal_ui.print_tool_result(result)
 
                     # Log result (truncated)
                     logger.debug(f"Tool result: {result[:200]}{'...' if len(result) > 200 else ''}")
@@ -233,71 +213,6 @@ class BaseAgent(ABC):
                         messages.append(result_messages)
 
         return "Max iterations reached without completion."
-
-    def _extract_tool_context(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract tool context from arguments for recovery suggestions.
-
-        Args:
-            tool_name: Name of the tool
-            arguments: Tool call arguments
-
-        Returns:
-            Dict with tool-specific context keys (filename, pattern, command, etc.)
-        """
-        context: Dict[str, Any] = {}
-
-        if tool_name == "read_file":
-            context["filename"] = arguments.get("filename", "")
-        elif tool_name == "grep_content":
-            context["pattern"] = arguments.get("pattern", "")
-            context["path"] = arguments.get("path", "")
-        elif tool_name == "execute_shell":
-            context["command"] = arguments.get("command", "")
-        elif tool_name == "web_search":
-            context["query"] = arguments.get("query", "")
-        elif tool_name == "web_fetch":
-            context["url"] = arguments.get("url", "")
-        elif tool_name == "glob_files":
-            context["pattern"] = arguments.get("pattern", "")
-            context["path"] = arguments.get("path", "")
-
-        return context
-
-    def _process_result_standalone(
-        self,
-        tool_name: str,
-        result: str,
-        tool_context: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Process tool result without memory storage (for non-memory mode).
-
-        Uses ToolResultProcessor for consistent truncation strategies,
-        but does not store results externally.
-
-        Args:
-            tool_name: Name of the tool
-            result: Raw tool result
-            tool_context: Optional dict with tool-specific context
-
-        Returns:
-            Processed result
-        """
-        from memory.tool_result_processor import ToolResultProcessor
-
-        processor = ToolResultProcessor()
-        processed, was_modified = processor.process_result(
-            tool_name=tool_name,
-            result=result,
-            tool_context=tool_context,
-        )
-
-        if was_modified:
-            # In non-memory mode, we can't store externally, so add a note
-            processed += (
-                "\n\n[Note: Result was truncated. Re-run with more specific query if needed.]"
-            )
-
-        return processed
 
     def delegate_subtask(
         self, subtask_description: str, max_iterations: int = 5, include_context: bool = False
@@ -384,16 +299,7 @@ Execute this subtask NOW and provide concrete results."""
                 verbose=True,  # Still show progress
             )
 
-            # Process subtask result using unified processor
-            original_length = len(result)
-            result = self._process_result_standalone(
-                tool_name="_subtask_result",
-                result=result,
-            )
-
-            logger.info(
-                f"✅ Subtask completed. Result length: {original_length} → {len(result)} chars"
-            )
+            logger.info(f"✅ Subtask completed. Result length: {len(result)} chars")
 
             return f"Subtask execution result:\n{result}"
 
