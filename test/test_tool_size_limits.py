@@ -4,8 +4,6 @@ Each tool now handles its own size limit checking and returns appropriate
 error messages when output exceeds the maximum allowed tokens.
 """
 
-
-
 from tools.advanced_file_ops import GrepTool
 from tools.file_ops import FileReadTool
 from tools.shell import ShellTool
