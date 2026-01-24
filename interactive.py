@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from prompt_toolkit import prompt
+from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 
 from config import Config
@@ -47,12 +47,15 @@ async def run_interactive_mode(agent, mode: str):
         }
     )
 
+    # Create async prompt session
+    session = PromptSession(style=prompt_style)
+
     conversation_count = 0
 
     while True:
         try:
-            # Get user input using prompt_toolkit for better Unicode support
-            user_input = prompt([("class:prompt", "You: ")], style=prompt_style).strip()
+            # Get user input using prompt_toolkit's async API for better Unicode support
+            user_input = (await session.prompt_async([("class:prompt", "You: ")])).strip()
 
             # Handle empty input
             if not user_input:
