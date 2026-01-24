@@ -2,7 +2,6 @@
 
 import asyncio
 import re
-from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
 from llm import LLMMessage
@@ -51,15 +50,9 @@ class PlanExecuteAgent(BaseAgent):
     def __init__(self, *args, **kwargs):
         """Initialize the enhanced plan-execute agent."""
         super().__init__(*args, **kwargs)
-        self._executor = ThreadPoolExecutor(max_workers=self.MAX_PARALLEL_STEPS)
         self._exploration_results: Optional[ExplorationResult] = None
         self._current_plan: Optional[ExecutionPlan] = None
         self._failure_count = 0
-
-    def __del__(self):
-        """Clean up thread pool executor."""
-        if hasattr(self, "_executor"):
-            self._executor.shutdown(wait=False)
 
     async def run(self, task: str) -> str:
         """Execute the four-phase agent loop.
