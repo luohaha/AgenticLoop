@@ -1,6 +1,7 @@
 """Base agent class for all agent types."""
 
 import asyncio
+import inspect
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
@@ -73,6 +74,13 @@ class BaseAgent(ABC):
         Returns:
             LLMResponse object
         """
+        call_async = getattr(self.llm, "call_async", None)
+        if callable(call_async) and inspect.iscoroutinefunction(call_async):
+            return await call_async(messages=messages, tools=tools, max_tokens=4096, **kwargs)
+
+        if inspect.iscoroutinefunction(self.llm.call):
+            return await self.llm.call(messages=messages, tools=tools, max_tokens=4096, **kwargs)
+
         return await asyncio.to_thread(
             self.llm.call, messages=messages, tools=tools, max_tokens=4096, **kwargs
         )

@@ -4,6 +4,9 @@ Each tool now handles its own size limit checking and returns appropriate
 error messages when output exceeds the maximum allowed tokens.
 """
 
+import shlex
+import sys
+
 from tools.advanced_file_ops import GrepTool
 from tools.file_ops import FileReadTool
 from tools.shell import ShellTool
@@ -88,7 +91,8 @@ class TestShellToolSizeLimits:
         """Large command output should return error."""
         tool = ShellTool()
         # Generate large output (more than 25000 * 4 = 100KB)
-        result = tool.execute("python -c \"print('x' * 150000)\"")
+        python_cmd = shlex.quote(sys.executable)
+        result = tool.execute(f"{python_cmd} -c \"print('x' * 150000)\"")
 
         assert "Error: Command output" in result
         assert "exceeds" in result

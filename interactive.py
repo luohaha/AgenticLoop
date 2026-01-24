@@ -46,16 +46,14 @@ async def run_interactive_mode(agent, mode: str):
             "prompt": "#00ffff bold",  # Cyan bold for "You:"
         }
     )
-
-    # Create async prompt session
-    session = PromptSession(style=prompt_style)
+    prompt_session = PromptSession(style=prompt_style)
 
     conversation_count = 0
 
     while True:
         try:
-            # Get user input using prompt_toolkit's async API for better Unicode support
-            user_input = (await session.prompt_async([("class:prompt", "You: ")])).strip()
+            # Get user input using prompt_toolkit for better Unicode support
+            user_input = (await prompt_session.prompt_async([("class:prompt", "You: ")])).strip()
 
             # Handle empty input
             if not user_input:

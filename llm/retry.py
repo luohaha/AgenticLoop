@@ -1,5 +1,7 @@
 """Retry utilities for LLM API calls with exponential backoff."""
 
+import asyncio
+import inspect
 import time
 from functools import wraps
 from typing import Callable, TypeVar
@@ -78,14 +80,57 @@ def with_retry():
     """
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        if inspect.iscoroutinefunction(func):
+
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs) -> T:
+                last_error = None
+                max_retries = Config.RETRY_MAX_ATTEMPTS
+
+                for attempt in range(max_retries + 1):
+                    try:
+                        return await func(*args, **kwargs)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        last_error = e
+
+                        # Don't retry on last attempt
+                        if attempt == max_retries:
+                            break
+
+                        # Only retry if error is retryable
+                        if not is_retryable_error(e):
+                            raise
+
+                        # Calculate delay using Config
+                        delay = Config.get_retry_delay(attempt)
+
+                        # Log retry attempt
+                        error_type = "Rate limit" if is_rate_limit_error(e) else "Retryable"
+                        logger.warning(f"{error_type} error: {str(e)}")
+                        logger.warning(
+                            f"Retrying in {delay:.1f}s... (attempt {attempt + 1}/{max_retries})"
+                        )
+
+                        # Wait before retry
+                        await asyncio.sleep(delay)
+
+                # All retries exhausted
+                raise last_error
+
+            return async_wrapper  # type: ignore[return-value]
+
         @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
+        def sync_wrapper(*args, **kwargs) -> T:
             last_error = None
             max_retries = Config.RETRY_MAX_ATTEMPTS
 
             for attempt in range(max_retries + 1):
                 try:
                     return func(*args, **kwargs)
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
                     last_error = e
 
@@ -113,7 +158,7 @@ def with_retry():
             # All retries exhausted
             raise last_error
 
-        return wrapper
+        return sync_wrapper
 
     return decorator
 
