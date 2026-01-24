@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import aiofiles
+import aiofiles.os.path
 
 from tools.base import BaseTool
 
@@ -48,10 +49,10 @@ Returns sorted list of matching file paths."""
         """Find files matching glob pattern."""
         try:
             base_path = Path(path)
-            if not base_path.exists():
+            if not await aiofiles.os.path.exists(str(base_path)):
                 return f"Error: Path does not exist: {path}"
 
-            matches = sorted(base_path.glob(pattern))
+            matches = await asyncio.to_thread(lambda: sorted(base_path.glob(pattern)))
             if not matches:
                 return f"No files found matching pattern: {pattern} in {path}"
 
@@ -159,7 +160,7 @@ Examples:
     ) -> str:
         """Search for pattern in files with optional file filtering."""
         base_path = Path(path)
-        if not base_path.exists():
+        if not await aiofiles.os.path.exists(str(base_path)):
             return f"Error: Path does not exist: {path}"
 
         # Use ripgrep if available
@@ -334,11 +335,15 @@ Examples:
             # Determine files to search
             if file_pattern:
                 try:
-                    files_to_search = list(base_path.glob(file_pattern))
+                    files_to_search = await asyncio.to_thread(
+                        lambda: [f for f in base_path.glob(file_pattern) if f.is_file()]
+                    )
                 except Exception as e:
                     return f"Error with file_pattern '{file_pattern}': {str(e)}"
             else:
-                files_to_search = [f for f in base_path.rglob("*") if f.is_file()]
+                files_to_search = await asyncio.to_thread(
+                    lambda: [f for f in base_path.rglob("*") if f.is_file()]
+                )
 
             # Filter out excluded patterns
             excludes = exclude_patterns if exclude_patterns is not None else default_excludes
@@ -347,8 +352,18 @@ Examples:
             excluded_files = set()
             for exclude_pattern in excludes:
                 with contextlib.suppress(Exception):
-                    excluded_files.update(base_path.glob(exclude_pattern))
-                    excluded_files.update(base_path.rglob(exclude_pattern))
+                    glob_matches = await asyncio.to_thread(
+                        lambda exclude_pattern=exclude_pattern: list(
+                            base_path.glob(exclude_pattern)
+                        )
+                    )
+                    rglob_matches = await asyncio.to_thread(
+                        lambda exclude_pattern=exclude_pattern: list(
+                            base_path.rglob(exclude_pattern)
+                        )
+                    )
+                    excluded_files.update(glob_matches)
+                    excluded_files.update(rglob_matches)
 
             # Also exclude common directories
             exclude_dirs = {
@@ -364,8 +379,6 @@ Examples:
             # Filter files
             filtered_files = []
             for file_path in files_to_search:
-                if not file_path.is_file():
-                    continue
                 if file_path in excluded_files:
                     continue
                 # Check for excluded directories
@@ -488,7 +501,7 @@ IMPORTANT: Use this for small, targeted edits to save tokens."""
         try:
             path = Path(file_path)
 
-            if not path.exists():
+            if not await aiofiles.os.path.exists(str(path)):
                 return f"Error: File does not exist: {file_path}"
 
             if operation == "replace":

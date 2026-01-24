@@ -7,11 +7,13 @@ This tool provides advanced editing features beyond the basic EditTool:
 - Rollback: Can revert changes if editing fails
 """
 
+import asyncio
 from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import aiofiles
+import aiofiles.os.path
 
 from tools.base import BaseTool
 
@@ -147,7 +149,7 @@ IMPORTANT:
             path = Path(file_path)
 
             # Validation
-            if not path.exists():
+            if not await aiofiles.os.path.exists(str(path)):
                 return f"Error: File does not exist: {file_path}"
 
             # Read original content
@@ -264,7 +266,7 @@ IMPORTANT:
             return "\n".join(output_parts)
         except Exception as e:
             # Rollback if writing failed
-            if create_backup and backup_path and backup_path.exists():
+            if create_backup and backup_path and await aiofiles.os.path.exists(str(backup_path)):
                 await self._copy_file(backup_path, path)
                 output_parts.append(f"✗ Edit failed, restored from backup: {e}")
             else:

@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import aiofiles
+import aiofiles.os
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 
@@ -267,7 +268,7 @@ async def _dump_memory(session_id: str):
 
         # Create output directory
         output_dir = Path("dumps")
-        output_dir.mkdir(exist_ok=True)
+        await aiofiles.os.makedirs(str(output_dir), exist_ok=True)
 
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

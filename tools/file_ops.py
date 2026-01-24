@@ -1,5 +1,6 @@
 """File operation tools for reading, writing, and searching files."""
 
+import asyncio
 import glob
 import os
 from typing import Any, Dict
@@ -140,7 +141,7 @@ class FileSearchTool(BaseTool):
         """Search for files matching pattern."""
         try:
             search_path = os.path.join(directory, "**", pattern)
-            files = glob.glob(search_path, recursive=True)
+            files = await asyncio.to_thread(lambda: glob.glob(search_path, recursive=True))
             if files:
                 return "\n".join(files)
             else:

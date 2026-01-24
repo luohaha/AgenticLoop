@@ -8,11 +8,13 @@ This tool provides intelligent code navigation capabilities:
 """
 
 import ast
+import asyncio
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
 
 import aiofiles
+import aiofiles.os.path
 
 from tools.base import BaseTool
 
@@ -241,7 +243,7 @@ WHEN TO USE GREP INSTEAD:
         """Execute code navigation search."""
         try:
             base_path = Path(path)
-            if not base_path.exists():
+            if not await aiofiles.os.path.exists(str(base_path)):
                 return f"Error: Path does not exist: {path}"
 
             if search_type == "find_function":
@@ -258,7 +260,9 @@ WHEN TO USE GREP INSTEAD:
         except Exception as e:
             return f"Error executing code_navigator: {str(e)}"
 
-    def _iter_source_files(self, base_path: Path, language: Optional[str] = None) -> List[Path]:
+    async def _iter_source_files(
+        self, base_path: Path, language: Optional[str] = None
+    ) -> List[Path]:
         """Iterate over source files, optionally filtered by language."""
         files = []
 
@@ -266,12 +270,18 @@ WHEN TO USE GREP INSTEAD:
             # Filter by specific language
             patterns = LANGUAGE_FILE_PATTERNS.get(language, [])
             for pattern in patterns:
-                files.extend(base_path.rglob(pattern))
+                matches = await asyncio.to_thread(
+                    lambda pattern=pattern: list(base_path.rglob(pattern))
+                )
+                files.extend(matches)
         else:
             # All supported languages
             for patterns in LANGUAGE_FILE_PATTERNS.values():
                 for pattern in patterns:
-                    files.extend(base_path.rglob(pattern))
+                    matches = await asyncio.to_thread(
+                        lambda pattern=pattern: list(base_path.rglob(pattern))
+                    )
+                    files.extend(matches)
 
         # Deduplicate and exclude common non-code directories
         seen = set()
@@ -419,7 +429,7 @@ WHEN TO USE GREP INSTEAD:
         """Find all function definitions matching the name."""
         results: List[Dict] = []
 
-        for source_file in self._iter_source_files(base_path, language):
+        for source_file in await self._iter_source_files(base_path, language):
             lang = detect_language(source_file)
             if not lang:
                 continue
@@ -499,7 +509,7 @@ WHEN TO USE GREP INSTEAD:
         """Find all class definitions matching the name."""
         results: List[Dict] = []
 
-        for source_file in self._iter_source_files(base_path, language):
+        for source_file in await self._iter_source_files(base_path, language):
             lang = detect_language(source_file)
             if not lang:
                 continue
@@ -585,7 +595,7 @@ WHEN TO USE GREP INSTEAD:
     async def _show_structure(self, file_path: str) -> str:
         """Show the structure of a specific file."""
         path = Path(file_path)
-        if not path.exists():
+        if not await aiofiles.os.path.exists(str(path)):
             return f"Error: File does not exist: {file_path}"
 
         lang = detect_language(path)
@@ -797,7 +807,7 @@ WHEN TO USE GREP INSTEAD:
         """Find where a function or class is used (called)."""
         results = []
 
-        for source_file in self._iter_source_files(base_path, language):
+        for source_file in await self._iter_source_files(base_path, language):
             lang = detect_language(source_file)
             if not lang:
                 continue
