@@ -8,6 +8,15 @@
 
 This RFC proposes an incremental migration of AgenticLoop to an **asyncio-first** runtime. The goal is to make the agent loop, tool execution, LLM calls, and persistence **non-blocking**, enabling safe concurrency, cancellation, and predictable timeouts — while **preserving existing user-visible behavior**.
 
+## Reader Guide
+
+This RFC is written for:
+
+- **Maintainers/reviewers**: to agree on constraints, sequencing, and acceptance criteria.
+- **Contributors/agents**: to avoid introducing new blocking runtime code during the migration.
+
+If you only read one section, read: **Goals**, **Design Overview**, and **Implementation Plan**.
+
 ## Motivation
 
 Current execution paths contain multiple blocking operations (HTTP, subprocess, SQLite, retry sleeps, interactive input). As the system grows (more tools, parallelism, longer tasks), blocking calls:
@@ -54,16 +63,36 @@ This RFC targets the runtime path that executes agent loops and tools:
 
 This RFC intentionally aligns with patterns proven in production agent runtimes:
 
-- **Session/thread objects with resume** (Codex SDK): keep conversation state in a dedicated object (“thread”) and allow resuming by ID across runs.
-- **Event-driven execution + streaming** (Codex SDK): provide both a “run to completion” API and a streamed event API (so UIs/automation can react to intermediate tool calls and progress without parsing logs).
-- **Async iterators and context-managed clients** (Claude Agent SDK): expose `AsyncIterator` streaming surfaces (`async for ...`) and use async context managers for lifecycle/cleanup of long-lived resources.
-- **Careful stream termination** (Claude Agent SDK guidance): streaming loops should complete cleanly; if a consumer stops early, the implementation should still ensure cleanup/connection teardown.
-- **Process/tool isolation**: clear boundaries between orchestration and side-effecting execution (local tools, subprocesses, external integrations).
+**Codex SDK (Thread + events model)**
+- A conversation is represented as a **thread** object (`Thread`) whose ID becomes available when a run starts (via an early `thread.started` event). This enables **resume by ID**.
+- There are two ergonomic surfaces:
+  - `run(...)` → run-to-completion result (final response + items + usage).
+  - `runStreamed(...)` → an `AsyncGenerator` of structured **thread events** (e.g., `turn.started`, `item.started/updated/completed`, `turn.completed`, `turn.failed`).
+- Streaming is designed around **structured events**, not log parsing. Cleanup is handled with `try/finally` around the streaming loop.
+- Cancellation propagates via a **signal** parameter in run options; the implementation is expected to stop streaming and still execute cleanup.
+
+**Claude Agent SDK demos (Session + stream model)**
+- A session API tends to separate **send** from **stream**: `await session.send(...)` followed by `for await (msg of session.stream())`.
+- Sessions are often treated as long-lived resources and closed via language-native lifecycle primitives (TypeScript `using`; Python analogue: `async with`).
+
+**Shared design theme**
+- Keep orchestration and tool side effects behind clear boundaries, and prefer deterministic, structured progress reporting over free-form prints.
 
 Implication for AgenticLoop:
 - Keep orchestration async-first and structured.
 - Prefer producing deterministic, structured progress (even if initially only used internally by the CLI/TUI).
 - Prefer explicit lifecycle management for long-lived resources (LLM sessions, DB connections, subprocess handles).
+
+## Phases at a Glance
+
+| Phase | Primary change | Key acceptance |
+|------:|----------------|----------------|
+| 0 | RFC + repo rules | Docs point to RFC |
+| 1 | Single loop ownership | No `asyncio.run()` in library code |
+| 2 | Async agent loop + async tool executor boundary | ReAct works end-to-end; tool order unchanged |
+| 3 | Async LLM + async retry backoff | Retries don’t block; cancellation stops backoff |
+| 4 | Convert high-impact blocking tools | HTTP/subprocess/DB no longer depend on `to_thread` |
+| 5 | Optional constrained tool parallelism | Faster when safe; still deterministic outputs |
 
 ## Design Overview
 
@@ -87,12 +116,22 @@ This is a large mechanical change but keeps code paths singular (no parallel syn
 
 Tool execution becomes awaitable at the executor layer.
 
-Policy:
-- During migration, tools may remain synchronous, but **blocking I/O must be called via an async boundary** (e.g., `await asyncio.to_thread(tool.execute, ...)`) inside the tool executor.
-- New/modified tools should prefer native async libraries (HTTP, subprocess, DB) and expose an awaitable execution path once the base interface supports it.
+Migration invariant (Phase 2–4 compatibility):
+- Tools may remain synchronous during early phases, but any blocking work must run behind an **async boundary** in the runtime (e.g., the tool executor uses `await asyncio.to_thread(...)`).
+- To avoid API bloat, tools should converge on a single name (`execute`) that is **awaitable**. During migration, the executor may accept either:
+  - `execute(...) -> str` (sync), or
+  - `async def execute(...) -> str` (async), detected by “is this awaitable?” rather than by a second method name.
+- New/modified tools should prefer native async libraries for I/O-heavy work (HTTP, subprocess, DB) so timeouts and cancellation can be enforced reliably.
 
 Notes:
 - `asyncio.to_thread(...)` isolates blocking work but does **not** forcibly stop the underlying work on cancellation; it only cancels the await. For side-effecting operations, native async implementations (or explicit process cancellation) are preferred.
+
+### 3.1) LLM calls: awaitable interface without duplication
+
+The LLM adapter should follow the same principle as tools: prefer a single method name that becomes awaitable.
+
+- The agent runtime should treat `llm.call(...)` as awaitable. During migration it may accept either a sync or async implementation, based on “is the returned value awaitable?”.
+- If the underlying provider library is synchronous, the async boundary belongs in the runtime/LLM adapter (not sprinkled across agent code).
 
 ### 4) Concurrency semantics (safe by default)
 
@@ -186,6 +225,17 @@ Prioritize by impact:
 - Measurable latency/throughput improvements on safe workloads.
 - No regressions on deterministic order of returned tool messages.
 
+## Testing & Verification
+
+Each phase PR should include at least:
+
+- **Static checks**:
+  - Confirm `asyncio.run(` only appears in entrypoints.
+  - Confirm no new blocking calls were introduced in runtime paths (`time.sleep`, `requests`, `sqlite3`, `subprocess.run`).
+- **Behavior checks**:
+  - Run a basic smoke task end-to-end via CLI.
+  - Run the unit test suite relevant to the changed area (agent loop, tools, memory, etc.).
+
 ## Coding Rules During Migration
 
 These rules apply to all new code and refactors while the migration is in progress:
@@ -198,6 +248,7 @@ These rules apply to all new code and refactors while the migration is in progre
 6. Prefer structured concurrency (`asyncio.TaskGroup`) for parallel work.
 7. Avoid `asyncio.get_event_loop()` in new async code; use `get_running_loop()`.
 8. Keep async boundaries centralized (prefer the executor/runtime layer over sprinkling `to_thread` across tools).
+9. Do not swallow cancellation: avoid blanket `except Exception` in async runtime paths; re-raise `asyncio.CancelledError`.
 
 ## Suggested Enforcement (Optional)
 
