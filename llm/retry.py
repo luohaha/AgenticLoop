@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-def is_rate_limit_error(error: Exception) -> bool:
+def is_rate_limit_error(error: BaseException) -> bool:
     """Check if an error is a rate limit error."""
     error_str = str(error).lower()
     rate_limit_indicators = [
@@ -26,7 +26,7 @@ def is_rate_limit_error(error: Exception) -> bool:
     return any(indicator in error_str for indicator in rate_limit_indicators)
 
 
-def is_retryable_error(error: Exception) -> bool:
+def is_retryable_error(error: BaseException) -> bool:
     """Check if an error is retryable."""
     if isinstance(error, asyncio.CancelledError):
         return False
