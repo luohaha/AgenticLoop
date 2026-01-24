@@ -1,6 +1,5 @@
 """Enhanced Plan-and-Execute agent with exploration, parallel execution, and adaptive replanning."""
 
-import asyncio
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
@@ -139,9 +138,9 @@ class PlanExecuteAgent(BaseAgent):
             f"[dim]Running {len(exploration_tasks)} parallel explorations...[/dim]"
         )
 
-        # Run explorations in parallel
+        # Run explorations in parallel (thread pool; no nested event loops)
         try:
-            results = asyncio.run(self._run_parallel_explorations(exploration_tasks, task))
+            results = self._run_parallel_explorations(exploration_tasks, task)
         except Exception as e:
             logger.warning(f"Parallel exploration failed, falling back to sequential: {e}")
             results = self._run_sequential_explorations(exploration_tasks, task)
@@ -166,7 +165,7 @@ class PlanExecuteAgent(BaseAgent):
 
         return combined
 
-    async def _run_parallel_explorations(
+    def _run_parallel_explorations(
         self, tasks: List[Tuple[str, str]], main_task: str
     ) -> Dict[str, dict]:
         """Run multiple exploration tasks in parallel.
@@ -178,27 +177,23 @@ class PlanExecuteAgent(BaseAgent):
         Returns:
             Dict mapping aspect names to exploration results
         """
-        loop = asyncio.get_event_loop()
-
-        async def run_exploration(aspect: str, description: str) -> Tuple[str, dict]:
-            try:
-                result = await loop.run_in_executor(
-                    self._executor,
-                    self._run_single_exploration,
-                    aspect,
-                    description,
-                    main_task,
+        futures = {}
+        for aspect, description in tasks:
+            futures[
+                self._executor.submit(
+                    self._run_single_exploration, aspect, description, main_task
                 )
-                return aspect, result
+            ] = aspect
+
+        results: Dict[str, dict] = {}
+        for future, aspect in futures.items():
+            try:
+                results[aspect] = future.result()
             except Exception as e:
                 logger.warning(f"Exploration {aspect} failed: {e}")
-                return aspect, {"error": str(e)}
+                results[aspect] = {"error": str(e)}
 
-        # Run all explorations concurrently
-        coroutines = [run_exploration(aspect, desc) for aspect, desc in tasks]
-        completed = await asyncio.gather(*coroutines, return_exceptions=True)
-
-        return {aspect: result for aspect, result in completed if not isinstance(result, Exception)}
+        return results
 
     def _run_sequential_explorations(
         self, tasks: List[Tuple[str, str]], main_task: str
@@ -518,12 +513,10 @@ class PlanExecuteAgent(BaseAgent):
                     f"[bold magenta]Executing {len(batch)} steps in parallel[/bold magenta]"
                 )
                 for step in batch:
-                    terminal_ui.console.print(f"  [dim]- {step.description}[/dim]")
+                terminal_ui.console.print(f"  [dim]- {step.description}[/dim]")
 
                 try:
-                    results = asyncio.run(
-                        self._execute_parallel_steps(batch, plan, execution_scope)
-                    )
+                    results = self._execute_parallel_steps(batch, plan, execution_scope)
                     step_results.extend(results)
                 except Exception as e:
                     logger.warning(f"Parallel execution failed: {e}")
@@ -611,7 +604,7 @@ class PlanExecuteAgent(BaseAgent):
 
         return f"{step.id}: {step.description}\nResult: {result}"
 
-    async def _execute_parallel_steps(
+    def _execute_parallel_steps(
         self,
         steps: List[PlanStep],
         plan: ExecutionPlan,
@@ -627,15 +620,19 @@ class PlanExecuteAgent(BaseAgent):
         Returns:
             List of step result strings
         """
-        loop = asyncio.get_event_loop()
+        # Preserve input ordering (asyncio.gather semantics)
+        futures = [
+            self._executor.submit(self._execute_step, step, plan, execution_scope)
+            for step in steps
+        ]
 
-        async def run_step(step: PlanStep) -> str:
-            return await loop.run_in_executor(
-                self._executor, self._execute_step, step, plan, execution_scope
-            )
-
-        results = await asyncio.gather(*[run_step(s) for s in steps], return_exceptions=True)
-        return [r if isinstance(r, str) else f"Error: {r}" for r in results]
+        results: List[str] = []
+        for future in futures:
+            try:
+                results.append(future.result())
+            except Exception as e:
+                results.append(f"Error: {e}")
+        return results
 
     def _build_step_context(self, step: PlanStep, plan: ExecutionPlan) -> str:
         """Build context string for step execution.
