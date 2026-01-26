@@ -3,10 +3,11 @@
 This tool provides advanced editing features beyond the basic EditTool:
 - Fuzzy matching: Handles whitespace and indentation differences
 - Diff preview: Shows before/after comparison
-- Auto backup: Creates .bak files before editing
+- Auto backup: Creates .bak files before editing (disabled by default in git repos)
 - Rollback: Can revert changes if editing fails
 """
 
+import subprocess
 from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -15,6 +16,21 @@ import aiofiles
 import aiofiles.os
 
 from tools.base import BaseTool
+
+
+def _is_git_repo(path: Path) -> bool:
+    """Check if the given path is inside a git repository."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=path.parent if path.is_file() else path,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "true"
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
 
 
 class SmartEditTool(BaseTool):
@@ -36,7 +52,7 @@ This is the RECOMMENDED tool for editing code (prefer over edit_file).
 Features:
 - Fuzzy matching: Automatically handles whitespace/indentation differences
 - Diff preview: Shows exactly what will change
-- Auto backup: Creates .bak files before editing (can be disabled)
+- Auto backup: Creates .bak files before editing (disabled in git repos)
 - Rollback: Automatically reverts if editing fails
 
 Modes:
@@ -74,7 +90,7 @@ Examples:
 IMPORTANT:
 - Always use fuzzy_match=True (default) for code to handle formatting
 - Set dry_run=True first to preview changes
-- Backup is enabled by default for safety"""
+- Backup is disabled by default in git repos (use create_backup=True to force)"""
 
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -118,7 +134,7 @@ IMPORTANT:
             },
             "create_backup": {
                 "type": "boolean",
-                "description": "Create .bak backup file (default: true)",
+                "description": "Create .bak backup file (default: false in git repos, true otherwise)",
             },
             "show_diff": {
                 "type": "boolean",
@@ -139,7 +155,7 @@ IMPORTANT:
         end_line: int = 0,
         fuzzy_match: bool = True,
         dry_run: bool = False,
-        create_backup: bool = True,
+        create_backup: Optional[bool] = None,
         show_diff: bool = True,
         **kwargs,
     ) -> str:
@@ -150,6 +166,10 @@ IMPORTANT:
             # Validation
             if not await aiofiles.os.path.exists(str(path)):
                 return f"Error: File does not exist: {file_path}"
+
+            # Determine create_backup default: False in git repos, True otherwise
+            if create_backup is None:
+                create_backup = not _is_git_repo(path)
 
             # Read original content
             async with aiofiles.open(path, encoding="utf-8") as f:
