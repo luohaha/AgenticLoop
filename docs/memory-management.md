@@ -26,6 +26,21 @@ The memory system addresses this by:
 - **Configurable**: Multiple strategies and settings
 - **Multi-Provider**: Works with Anthropic, OpenAI, Gemini
 
+## Context Compaction Enhancements
+
+The memory system includes additional safeguards for large outputs and long-running sessions:
+
+- **Write-time tool output truncation**: Large tool outputs are truncated before being stored to protect context.
+  - Controls: `TOOL_OUTPUT_TRUNCATION_POLICY`, `TOOL_OUTPUT_MAX_TOKENS`, `TOOL_OUTPUT_MAX_BYTES`,
+    `TOOL_OUTPUT_SERIALIZATION_BUFFER`, `APPROX_CHARS_PER_TOKEN`
+- **Context overflow recovery**: On `context_length_exceeded` errors, the agent removes the oldest messages
+  (maintaining tool call/result integrity) and retries.
+  - Control: `CONTEXT_OVERFLOW_MAX_RETRIES`
+- **User message preservation**: Compaction keeps recent user messages up to a configurable token budget.
+  - Control: `COMPACT_USER_MESSAGE_MAX_TOKENS`
+- **Protected tools**: Tool results like `manage_todo_list` are preserved during compaction.
+  - Control: `PROTECTED_TOOLS`
+
 ## Quick Start
 
 ### 1. Enable Memory Management

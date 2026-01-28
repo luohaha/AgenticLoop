@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import aiofiles.os
 import aiosqlite
 
+from config import Config
 from llm.message_types import LLMMessage
 from memory.types import CompressedMemory
 from utils.runtime import get_db_path
@@ -54,8 +55,7 @@ class MemoryStore:
     async def _init_db(self) -> None:
         """Initialize database schema with single table."""
         async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute(
-                """
+            await conn.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     id TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL,
@@ -63,8 +63,7 @@ class MemoryStore:
                     system_messages TEXT,
                     summaries TEXT
                 )
-            """
-            )
+            """)
             await conn.commit()
             logger.debug("Database schema initialized")
 
@@ -373,7 +372,7 @@ class MemoryStore:
                         msgs.append(
                             LLMMessage(
                                 role="user",
-                                content=f"[Previous conversation summary]\n{summary_data['summary']}",
+                                content=f"{Config.COMPACT_SUMMARY_PREFIX}{summary_data['summary']}",
                             )
                         )
                     msgs.extend(

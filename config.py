@@ -83,6 +83,39 @@ class Config:
     MEMORY_SHORT_TERM_MIN_SIZE = int(os.getenv("MEMORY_SHORT_TERM_MIN_SIZE", "6"))
     MEMORY_COMPRESSION_RATIO = float(os.getenv("MEMORY_COMPRESSION_RATIO", "0.3"))
     MEMORY_PRESERVE_SYSTEM_PROMPTS = True
+    TOOL_OUTPUT_TRUNCATION_POLICY = os.getenv("TOOL_OUTPUT_TRUNCATION_POLICY", "tokens").lower()
+    TOOL_OUTPUT_MAX_TOKENS = int(os.getenv("TOOL_OUTPUT_MAX_TOKENS", "5000"))
+    APPROX_CHARS_PER_TOKEN = int(os.getenv("APPROX_CHARS_PER_TOKEN", "4"))
+    TOOL_OUTPUT_MAX_BYTES = int(
+        os.getenv("TOOL_OUTPUT_MAX_BYTES", str(TOOL_OUTPUT_MAX_TOKENS * APPROX_CHARS_PER_TOKEN))
+    )
+    TOOL_OUTPUT_SERIALIZATION_BUFFER = float(os.getenv("TOOL_OUTPUT_SERIALIZATION_BUFFER", "1.2"))
+    COMPACT_USER_MESSAGE_MAX_TOKENS = int(os.getenv("COMPACT_USER_MESSAGE_MAX_TOKENS", "20000"))
+    CONTEXT_OVERFLOW_MAX_RETRIES = int(os.getenv("CONTEXT_OVERFLOW_MAX_RETRIES", "3"))
+    PROTECTED_TOOLS = [
+        name.strip()
+        for name in os.getenv("PROTECTED_TOOLS", "manage_todo_list").split(",")
+        if name.strip()
+    ]
+    COMPACT_SUMMARIZATION_PROMPT = os.getenv(
+        "COMPACT_SUMMARIZATION_PROMPT",
+        """You are performing a CONTEXT CHECKPOINT COMPACTION.
+Create a handoff summary for another LLM that will resume the task.
+
+Include:
+- Current progress and key decisions made
+- Important context, constraints, or user preferences
+- What remains to be done (clear next steps)
+- Any critical data needed to continue
+
+Be concise and focused on helping the next LLM seamlessly continue.""",
+    )
+    COMPACT_SUMMARY_PREFIX = os.getenv(
+        "COMPACT_SUMMARY_PREFIX",
+        """Another language model started this task and produced
+a summary. Use this to build on existing work and avoid duplication:
+""",
+    )
 
     # Logging Configuration
     # Note: Logging is now controlled via --verbose flag

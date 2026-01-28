@@ -4,6 +4,7 @@ These tests verify that different components work together correctly,
 especially focusing on edge cases and the tool_call/tool_result matching issue.
 """
 
+from config import Config
 from llm.base import LLMMessage
 from memory import MemoryManager
 from memory.types import CompressionStrategy
@@ -142,7 +143,7 @@ class TestToolCallResultIntegration:
 
     async def test_orphaned_tool_use_detection(self, set_memory_config, mock_llm):
         """Test detection of orphaned tool_use (no matching result)."""
-        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=20)
         manager = MemoryManager(mock_llm)
 
         # Add tool_use without result
@@ -181,7 +182,7 @@ class TestToolCallResultIntegration:
 
     async def test_orphaned_tool_result_detection(self, set_memory_config, mock_llm):
         """Test detection of orphaned tool_result (no matching use)."""
-        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=20)
         manager = MemoryManager(mock_llm)
 
         # Add tool_result without use (this shouldn't happen but let's test it)
@@ -377,7 +378,7 @@ class TestEdgeCaseIntegration:
 
     async def test_alternating_compression_strategies(self, set_memory_config, mock_llm):
         """Test using different compression strategies on same manager."""
-        set_memory_config(MEMORY_SHORT_TERM_SIZE=5)
+        set_memory_config(MEMORY_SHORT_TERM_SIZE=20)
         manager = MemoryManager(mock_llm)
 
         # Add messages and compress with sliding window
@@ -411,7 +412,7 @@ class TestEdgeCaseIntegration:
             1
             for msg in context
             if isinstance(msg.content, str)
-            and msg.content.startswith("[Previous conversation summary]")
+            and msg.content.startswith(Config.COMPACT_SUMMARY_PREFIX)
         )
         assert summary_count >= 1  # At least one summary should exist
 

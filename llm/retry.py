@@ -26,6 +26,30 @@ def is_rate_limit_error(error: BaseException) -> bool:
     return any(indicator in error_str for indicator in rate_limit_indicators)
 
 
+def is_context_length_error(error: BaseException) -> bool:
+    """Check if an error is a context length overflow error."""
+    error_str = str(error).lower()
+    error_type = type(error).__name__
+
+    indicators = [
+        "context_length_exceeded",
+        "context length",
+        "maximum context",
+        "max context",
+        "prompt is too long",
+        "input is too long",
+        "too many tokens",
+        "token limit",
+        "max_tokens",
+        "maximum tokens",
+    ]
+
+    if "ContextLengthExceeded" in error_type or "TokenLimit" in error_type:
+        return True
+
+    return any(indicator in error_str for indicator in indicators)
+
+
 def is_retryable_error(error: BaseException) -> bool:
     """Check if an error is retryable."""
     if isinstance(error, asyncio.CancelledError):

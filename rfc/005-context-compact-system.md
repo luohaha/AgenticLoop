@@ -181,7 +181,7 @@ def _maybe_truncate_tool_output(self, message: LLMMessage) -> LLMMessage:
 def is_context_length_error(error: BaseException) -> bool:
     """Detect context overflow from various providers."""
 
-# agent/base.py  
+# agent/base.py
 async def _call_with_overflow_recovery(self, messages, max_retries=3):
     """Retry LLM call after removing oldest messages."""
 ```
@@ -289,18 +289,18 @@ CONTEXT_OVERFLOW_MAX_RETRIES = 3
 PROTECTED_TOOLS = ["manage_todo_list"]
 
 # Prompts (customizable)
-COMPACT_SUMMARIZATION_PROMPT = """You are performing a CONTEXT CHECKPOINT COMPACTION. 
+COMPACT_SUMMARIZATION_PROMPT = """You are performing a CONTEXT CHECKPOINT COMPACTION.
 Create a handoff summary for another LLM that will resume the task.
 
 Include:
 - Current progress and key decisions made
-- Important context, constraints, or user preferences  
+- Important context, constraints, or user preferences
 - What remains to be done (clear next steps)
 - Any critical data needed to continue
 
 Be concise and focused on helping the next LLM seamlessly continue."""
 
-COMPACT_SUMMARY_PREFIX = """Another language model started this task and produced 
+COMPACT_SUMMARY_PREFIX = """Another language model started this task and produced
 a summary. Use this to build on existing work and avoid duplication:"""
 ```
 
