@@ -50,6 +50,40 @@ class BackgroundTaskManager:
         self._tasks: Dict[str, BackgroundTask] = {}
         self._monitor_tasks: Dict[str, asyncio.Task] = {}
 
+    async def shutdown(self) -> None:
+        """Best-effort shutdown to prevent leaking subprocess transports.
+
+        This is primarily intended for tests and graceful teardown. It cancels
+        any monitor tasks and awaits them so they can kill/wait subprocesses.
+        """
+
+        monitors = list(self._monitor_tasks.values())
+        for monitor in monitors:
+            monitor.cancel()
+
+        # Await monitor completion so their cancellation cleanup runs.
+        for monitor in monitors:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await monitor
+
+        # As an extra safety net, ensure any still-attached processes are killed.
+        for task in list(self._tasks.values()):
+            proc = task.process
+            if proc is None:
+                continue
+            with contextlib.suppress(Exception):
+                proc.kill()
+            with contextlib.suppress(Exception):
+                # Use communicate() to consume stdout/stderr pipes, preventing
+                # transport leaks when the event loop closes.
+                await asyncio.wait_for(proc.communicate(), timeout=1.0)
+            # Explicitly close the transport to prevent warnings when GC runs
+            # after the event loop is closed.
+            with contextlib.suppress(Exception):
+                if hasattr(proc, "_transport") and proc._transport:
+                    proc._transport.close()
+            task.process = None
+
     @classmethod
     def get_instance(cls) -> "BackgroundTaskManager":
         """Get the singleton instance of the task manager."""
@@ -58,12 +92,10 @@ class BackgroundTaskManager:
         return cls._instance
 
     @classmethod
-    def reset_instance(cls) -> None:
+    async def reset_instance(cls) -> None:
         """Reset the singleton instance (for testing)."""
         if cls._instance is not None:
-            # Cancel any running monitor tasks
-            for monitor_task in cls._instance._monitor_tasks.values():
-                monitor_task.cancel()
+            await cls._instance.shutdown()
             cls._instance = None
 
     async def submit_task(
@@ -132,15 +164,24 @@ class BackgroundTaskManager:
                 task.process.kill()
                 with contextlib.suppress(Exception):
                     await task.process.communicate()
+                # Explicitly close the transport
+                with contextlib.suppress(Exception):
+                    if hasattr(task.process, "_transport") and task.process._transport:
+                        task.process._transport.close()
 
         except asyncio.CancelledError:
             task.status = TaskStatus.CANCELLED
             task.completed_at = time.time()
             if task.process:
                 task.process.kill()
-                # Use wait() instead of communicate() to avoid nested cancellation issues
+                # Use communicate() to consume stdout/stderr pipes, preventing
+                # transport leaks when the event loop closes.
                 with contextlib.suppress(Exception):
-                    await asyncio.wait_for(task.process.wait(), timeout=1.0)
+                    await asyncio.wait_for(task.process.communicate(), timeout=1.0)
+                # Explicitly close the transport
+                with contextlib.suppress(Exception):
+                    if hasattr(task.process, "_transport") and task.process._transport:
+                        task.process._transport.close()
             # Re-raise to properly propagate cancellation
             raise
 

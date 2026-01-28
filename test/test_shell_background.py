@@ -3,6 +3,7 @@
 import asyncio
 
 import pytest
+import pytest_asyncio
 
 from tools.shell import ShellTool
 from tools.shell_background import (
@@ -12,26 +13,28 @@ from tools.shell_background import (
 )
 
 
-@pytest.fixture
-def task_manager():
+@pytest_asyncio.fixture
+async def task_manager():
     """Create a fresh task manager for each test."""
     # Reset singleton to ensure clean state
-    BackgroundTaskManager.reset_instance()
+    await BackgroundTaskManager.reset_instance()
     manager = BackgroundTaskManager()
-    yield manager
-    # Cleanup: cancel any running monitor tasks
-    for monitor_task in manager._monitor_tasks.values():
-        monitor_task.cancel()
+    try:
+        yield manager
+    finally:
+        # Ensure monitor tasks are awaited so subprocess transports are cleaned
+        # up before pytest closes the event loop.
+        await manager.shutdown()
 
 
-@pytest.fixture
-def shell_tool(task_manager):
+@pytest_asyncio.fixture
+async def shell_tool(task_manager):
     """Create a shell tool with injected task manager."""
     return ShellTool(task_manager=task_manager)
 
 
-@pytest.fixture
-def status_tool(task_manager):
+@pytest_asyncio.fixture
+async def status_tool(task_manager):
     """Create a status tool with injected task manager."""
     return ShellTaskStatusTool(task_manager=task_manager)
 
@@ -39,13 +42,14 @@ def status_tool(task_manager):
 class TestBackgroundTaskManager:
     """Tests for BackgroundTaskManager."""
 
-    def test_singleton_pattern(self):
+    @pytest.mark.asyncio
+    async def test_singleton_pattern(self):
         """Test that get_instance returns the same instance."""
-        BackgroundTaskManager.reset_instance()
+        await BackgroundTaskManager.reset_instance()
         instance1 = BackgroundTaskManager.get_instance()
         instance2 = BackgroundTaskManager.get_instance()
         assert instance1 is instance2
-        BackgroundTaskManager.reset_instance()
+        await BackgroundTaskManager.reset_instance()
 
     @pytest.mark.asyncio
     async def test_submit_and_complete_task(self, task_manager):

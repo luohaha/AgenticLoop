@@ -159,6 +159,16 @@ Review existing RFCs before implementation to understand design decisions and co
 - If you must call a blocking library temporarily, ensure it’s executed behind an async boundary (e.g., `asyncio.to_thread`) and has a timeout/cancellation strategy.
 - **Strict async rule**: use native async libs where available (e.g., `aiofiles`, `httpx`). Use `aiofiles.os.path.*` for metadata checks. Only use `asyncio.to_thread` when no async API exists (e.g., glob/rglob). Avoid sync file copy; use async streaming instead.
 
+### Testing Async Code
+
+- **Tests that call async code must be async**: use `async def test_xxx` for tests that await async functions or use async fixtures.
+- **Async fixtures must use `@pytest_asyncio.fixture`**: fixtures that perform async setup/teardown or depend on async fixtures must be async.
+- **Subprocess cleanup in tests**: when tests create subprocesses, ensure proper cleanup before the event loop closes:
+  - Call `process.kill()` + `await process.communicate()` to consume pipes
+  - Explicitly close transport with `proc._transport.close()` if needed
+  - Use async fixtures with `try/finally` to guarantee cleanup
+- **Avoid mixing sync and async fixtures**: if a fixture depends on an async fixture, it should also be async.
+
 ## When Changing Key Areas
 
 - If you change CLI flags / behavior: update `README.md` and `docs/examples.md`.
