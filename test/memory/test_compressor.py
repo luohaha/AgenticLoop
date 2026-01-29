@@ -1,5 +1,6 @@
 """Unit tests for WorkingMemoryCompressor."""
 
+from config import Config
 from llm.base import LLMMessage
 from memory.compressor import WorkingMemoryCompressor
 from memory.types import CompressionStrategy
@@ -46,10 +47,13 @@ class TestCompressionStrategies:
 
         assert result is not None
         assert len(result.messages) > 0  # Should have summary message
-        assert result.messages[0].role == "user"  # Summary is a user message
+        assert any(
+            isinstance(msg.content, str) and msg.content.startswith(Config.COMPACT_SUMMARY_PREFIX)
+            for msg in result.messages
+        )
         assert result.original_message_count == len(simple_messages)
         assert result.metadata["strategy"] == "sliding_window"
-        assert result.compressed_tokens < result.original_tokens
+        assert result.compressed_tokens > 0
 
     async def test_deletion_strategy(self, mock_llm, simple_messages):
         """Test deletion compression strategy."""
@@ -194,87 +198,39 @@ class TestToolPairDetection:
 
 
 class TestProtectedTools:
-    """Test protected tool handling and todo context injection."""
+    """Test protected tool handling."""
 
     async def test_protected_tools_set_is_empty_by_default(self, mock_llm):
-        """Test that PROTECTED_TOOLS is empty - todo state is now injected via context."""
+        """Test that manage_todo_list is protected by default."""
         compressor = WorkingMemoryCompressor(mock_llm)
-        # PROTECTED_TOOLS should be empty because todo state is now injected
-        # via todo_context parameter instead of preserving tool messages
-        assert len(compressor.PROTECTED_TOOLS) == 0
+        assert "manage_todo_list" in compressor.PROTECTED_TOOLS
 
-    async def test_todo_tool_messages_can_be_compressed(
+    async def test_todo_tool_messages_are_preserved(
         self, set_memory_config, mock_llm, protected_tool_messages
     ):
-        """Test that todo tool messages can now be compressed (state preserved via injection)."""
+        """Test that manage_todo_list tool messages are preserved."""
         set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=0)  # Don't preserve anything by default
         compressor = WorkingMemoryCompressor(mock_llm)
 
-        preserved, to_compress = compressor._separate_messages(protected_tool_messages)
+        preserved, _ = compressor._separate_messages(protected_tool_messages)
 
-        # Todo tool messages should now be compressible (not protected)
-        # Only system messages should be preserved when MEMORY_SHORT_TERM_MIN_SIZE=0
-        assert len(to_compress) > 0
+        # manage_todo_list tool_use/tool_result should be preserved
+        preserved_tool_use_ids = set()
+        preserved_tool_result_ids = set()
+        for msg in preserved:
+            if isinstance(msg.content, list):
+                for block in msg.content:
+                    if isinstance(block, dict):
+                        if (
+                            block.get("type") == "tool_use"
+                            and block.get("name") == "manage_todo_list"
+                        ):
+                            preserved_tool_use_ids.add(block.get("id"))
+                        elif block.get("type") == "tool_result":
+                            preserved_tool_result_ids.add(block.get("tool_use_id"))
 
-    async def test_todo_context_injected_in_sliding_window(self, mock_llm, simple_messages):
-        """Test that todo context is injected into sliding window compression."""
-        compressor = WorkingMemoryCompressor(mock_llm)
-        todo_context = "1. [pending] Fix bug\n2. [in_progress] Write tests"
-
-        result = await compressor.compress(
-            simple_messages,
-            strategy="sliding_window",
-            target_tokens=500,
-            todo_context=todo_context,
-        )
-
-        # The summary should contain the todo context
-        summary_content = result.messages[-1].content if result.messages else ""
-        assert "[Current Tasks]" in summary_content
-        assert "Fix bug" in summary_content
-
-    async def test_todo_context_injected_in_selective(
-        self, set_memory_config, mock_llm, tool_use_messages
-    ):
-        """Test that todo context is injected into selective compression."""
-        set_memory_config(MEMORY_SHORT_TERM_MIN_SIZE=2)
-        compressor = WorkingMemoryCompressor(mock_llm)
-        todo_context = "1. [completed] Setup project"
-
-        result = await compressor.compress(
-            tool_use_messages,
-            strategy="selective",
-            target_tokens=500,
-            todo_context=todo_context,
-        )
-
-        # Find the summary message and check for todo context
-        summary_found = False
-        for msg in result.messages:
-            content = str(msg.content)
-            if (
-                "[Previous conversation summary]" in content
-                and "[Current Tasks]" in content
-                and "Setup project" in content
-            ):
-                summary_found = True
-                break
-
-        assert summary_found, "Todo context should be in the summary"
-
-    async def test_no_todo_context_when_none(self, mock_llm, simple_messages):
-        """Test that no todo section is added when todo_context is None."""
-        compressor = WorkingMemoryCompressor(mock_llm)
-
-        result = await compressor.compress(
-            simple_messages,
-            strategy="sliding_window",
-            target_tokens=500,
-            todo_context=None,
-        )
-
-        summary_content = result.messages[-1].content if result.messages else ""
-        assert "[Current Tasks]" not in summary_content
+        assert preserved_tool_use_ids
+        assert preserved_tool_use_ids == preserved_tool_result_ids
 
 
 class TestMessageSeparation:
@@ -362,6 +318,21 @@ class TestMessageSeparation:
                 tool_id in preserved_tool_use_ids
             ), f"Tool result for {tool_id} is preserved but its use is not"
 
+    async def test_turn_aborted_marker_preserved(self, mock_llm):
+        """Turn-aborted markers should be preserved even with tight budgets."""
+        compressor = WorkingMemoryCompressor(mock_llm)
+
+        messages = [
+            LLMMessage(role="user", content="Old message"),
+            LLMMessage(role="user", content="<turn-aborted> interrupted"),
+            LLMMessage(role="user", content="Recent " * 20),
+        ]
+
+        selected = compressor.select_user_messages(messages, max_tokens=1)
+        assert any(
+            isinstance(msg.content, str) and "<turn-aborted>" in msg.content for msg in selected
+        )
+
 
 class TestTokenEstimation:
     """Test token estimation logic."""
@@ -424,10 +395,36 @@ class TestCompressionMetrics:
             simple_messages, strategy=CompressionStrategy.SLIDING_WINDOW, target_tokens=50
         )
 
+        # compression_ratio = compressed_tokens / original_tokens
         assert result.compression_ratio > 0
-        assert result.compression_ratio <= 1.0
-        # Compressed should be smaller than original
-        assert result.compressed_tokens <= result.original_tokens
+        assert result.original_tokens > 0
+        assert result.compressed_tokens > 0
+        expected_ratio = result.compressed_tokens / result.original_tokens
+        assert abs(result.compression_ratio - expected_ratio) < 0.001
+
+    async def test_compression_reduces_tokens(self, mock_llm):
+        """Test that compression reduces token count for large inputs."""
+        compressor = WorkingMemoryCompressor(mock_llm)
+
+        # Create a larger message set where compression should be effective
+        large_messages = [
+            LLMMessage(role="user", content="Task: analyze this codebase"),
+            LLMMessage(role="assistant", content="I'll analyze the code. " * 50),
+            LLMMessage(role="user", content="Good, continue with the analysis"),
+            LLMMessage(role="assistant", content="Here are my findings. " * 50),
+            LLMMessage(role="user", content="What about the tests?"),
+            LLMMessage(role="assistant", content="The tests cover these areas. " * 50),
+        ]
+
+        result = await compressor.compress(
+            large_messages, strategy=CompressionStrategy.SLIDING_WINDOW, target_tokens=100
+        )
+
+        # For large inputs, compression should reduce tokens
+        assert result.compressed_tokens < result.original_tokens, (
+            f"Compression should reduce tokens for large inputs: "
+            f"{result.compressed_tokens} >= {result.original_tokens}"
+        )
 
     async def test_token_savings_calculation(self, mock_llm, simple_messages):
         """Test token savings calculation."""
@@ -437,8 +434,8 @@ class TestCompressionMetrics:
             simple_messages, strategy=CompressionStrategy.SLIDING_WINDOW
         )
 
+        # token_savings = original_tokens - compressed_tokens
         savings = result.token_savings
-        assert savings >= 0
         assert savings == result.original_tokens - result.compressed_tokens
 
     async def test_savings_percentage_calculation(self, mock_llm, simple_messages):
@@ -449,8 +446,149 @@ class TestCompressionMetrics:
             simple_messages, strategy=CompressionStrategy.SLIDING_WINDOW
         )
 
-        percentage = result.savings_percentage
-        assert 0 <= percentage <= 100
+        # savings_percentage = (token_savings / original_tokens) * 100
+        expected_percentage = (
+            (result.token_savings / result.original_tokens) * 100
+            if result.original_tokens > 0
+            else 0
+        )
+        assert abs(result.savings_percentage - expected_percentage) < 0.01
+
+
+class TestCompressionEffectiveness:
+    """Tests that compaction produces meaningful reductions."""
+
+    async def test_compaction_reduces_token_count(self, mock_llm):
+        """Large assistant/tool outputs should compress to a smaller summary."""
+        compressor = WorkingMemoryCompressor(mock_llm)
+
+        messages = [
+            LLMMessage(role="user", content="Short question 1"),
+            LLMMessage(role="assistant", content="A" * 8000),
+            LLMMessage(role="user", content="Short question 2"),
+            LLMMessage(role="assistant", content="B" * 8000),
+            LLMMessage(role="tool", content="C" * 8000, tool_call_id="call_1"),
+        ]
+
+        result = await compressor.compress(
+            messages, strategy=CompressionStrategy.SLIDING_WINDOW, target_tokens=200
+        )
+
+        # If you want to see numbers, run: pytest -k compaction_reduces_token_count -s
+        print(
+            f"original_tokens={result.original_tokens} "
+            f"compressed_tokens={result.compressed_tokens} "
+            f"savings_percentage={result.savings_percentage:.1f}"
+        )
+
+        assert result.compressed_tokens < result.original_tokens, (
+            "Expected compression to reduce token count; "
+            f"original={result.original_tokens}, compressed={result.compressed_tokens}"
+        )
+        assert result.savings_percentage > 50
+
+
+class TestUserMessageBudget:
+    """Tests user message truncation limits."""
+
+    async def test_user_messages_capped_by_budget(self, set_memory_config, mock_llm):
+        """User messages should be selected within the configured budget."""
+        set_memory_config(COMPACT_USER_MESSAGE_MAX_TOKENS=30)
+        compressor = WorkingMemoryCompressor(mock_llm)
+
+        messages = [LLMMessage(role="user", content=f"msg {i} " + "x" * 40) for i in range(5)]
+
+        selected = compressor.select_user_messages(messages, Config.COMPACT_USER_MESSAGE_MAX_TOKENS)
+
+        assert selected
+        assert selected[-1].content == messages[-1].content
+        assert compressor._estimate_tokens(selected) <= Config.COMPACT_USER_MESSAGE_MAX_TOKENS
+
+
+class TestCompactionStructure:
+    """Tests that rebuilt history matches RFC structure."""
+
+    async def test_compaction_rebuild_structure(self, set_memory_config, mock_llm):
+        """Rebuilt history should follow system+user+summary+protected+orphaned."""
+        set_memory_config(COMPACT_USER_MESSAGE_MAX_TOKENS=100000)
+        compressor = WorkingMemoryCompressor(mock_llm)
+
+        system = LLMMessage(role="system", content="system")
+        user_one = LLMMessage(role="user", content="user one")
+        user_two = LLMMessage(role="user", content="user two")
+
+        orphan_call = {
+            "id": "orphan_1",
+            "type": "function",
+            "function": {"name": "tool_x", "arguments": "{}"},
+        }
+        orphan_assistant = LLMMessage(role="assistant", content=None, tool_calls=[orphan_call])
+
+        protected_call = {
+            "id": "todo_1",
+            "type": "function",
+            "function": {"name": "manage_todo_list", "arguments": "{}"},
+        }
+        protected_assistant = LLMMessage(
+            role="assistant", content=None, tool_calls=[protected_call]
+        )
+        protected_tool = LLMMessage(role="tool", content="ok", tool_call_id="todo_1")
+
+        messages = [
+            system,
+            user_one,
+            orphan_assistant,
+            protected_assistant,
+            protected_tool,
+            user_two,
+        ]
+
+        result = await compressor.compress(
+            messages, strategy=CompressionStrategy.SLIDING_WINDOW, target_tokens=200
+        )
+        result_messages = result.messages
+
+        assert result_messages[0].role == "system"
+
+        summary_idx = next(
+            i
+            for i, msg in enumerate(result_messages)
+            if isinstance(msg.content, str)
+            and msg.content.startswith(Config.COMPACT_SUMMARY_PREFIX)
+        )
+
+        # User messages must appear before the summary.
+        for idx, msg in enumerate(result_messages):
+            if msg.role == "user" and isinstance(msg.content, str):
+                if msg.content.startswith(Config.COMPACT_SUMMARY_PREFIX):
+                    continue
+                assert idx < summary_idx
+
+        protected_assistant_idx = next(
+            i
+            for i, msg in enumerate(result_messages)
+            if msg.role == "assistant"
+            and msg.tool_calls
+            and any(
+                isinstance(tc, dict) and tc.get("function", {}).get("name") == "manage_todo_list"
+                for tc in msg.tool_calls
+            )
+        )
+        protected_tool_idx = next(
+            i
+            for i, msg in enumerate(result_messages)
+            if msg.role == "tool" and msg.tool_call_id == "todo_1"
+        )
+        orphan_idx = next(
+            i
+            for i, msg in enumerate(result_messages)
+            if msg.role == "assistant"
+            and msg.tool_calls
+            and any(isinstance(tc, dict) and tc.get("id") == "orphan_1" for tc in msg.tool_calls)
+        )
+
+        assert summary_idx < protected_assistant_idx < protected_tool_idx
+        assert orphan_idx == len(result_messages) - 1
 
 
 class TestCompressionErrors:

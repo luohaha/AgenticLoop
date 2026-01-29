@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import aiofiles.os
 import aiosqlite
 
+from config import Config
 from llm.message_types import LLMMessage
 from memory.types import CompressedMemory
 from utils.runtime import get_db_path
@@ -373,7 +374,7 @@ class MemoryStore:
                         msgs.append(
                             LLMMessage(
                                 role="user",
-                                content=f"[Previous conversation summary]\n{summary_data['summary']}",
+                                content=f"{Config.COMPACT_SUMMARY_PREFIX}{summary_data['summary']}",
                             )
                         )
                     msgs.extend(

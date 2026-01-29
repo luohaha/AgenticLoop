@@ -43,6 +43,7 @@ class InteractiveSession:
                 "theme",
                 "verbose",
                 "compact",
+                "compact-output",
                 "exit",
                 "quit",
             ],
@@ -101,7 +102,10 @@ class InteractiveSession:
             f"  [{colors.primary}]/verbose[/{colors.primary}]          - Toggle verbose thinking display"
         )
         terminal_ui.console.print(
-            f"  [{colors.primary}]/compact[/{colors.primary}]          - Toggle compact output mode"
+            f"  [{colors.primary}]/compact[/{colors.primary}]          - Compact memory now"
+        )
+        terminal_ui.console.print(
+            f"  [{colors.primary}]/compact-output[/{colors.primary}]   - Toggle compact output mode"
         )
         terminal_ui.console.print(
             f"  [{colors.primary}]/exit[/{colors.primary}]             - Exit interactive mode"
@@ -264,6 +268,19 @@ class InteractiveSession:
         status = "enabled" if self.compact_mode else "disabled"
         terminal_ui.print_info(f"Compact mode {status}")
 
+    async def _compact_memory(self) -> None:
+        """Manually compact memory and report savings."""
+        terminal_ui.print_info("Compacting memory...")
+        compressed = await self.agent.memory.compress()
+        if not compressed:
+            terminal_ui.print_info("No messages to compact.")
+            return
+
+        terminal_ui.print_success(
+            f"Compaction complete: {compressed.original_tokens} → {compressed.compressed_tokens} tokens "
+            f"({compressed.savings_percentage:.1f}% saved)"
+        )
+
     def _update_status_bar(self) -> None:
         """Update status bar with current stats."""
         stats = self.agent.memory.get_stats()
@@ -326,6 +343,9 @@ class InteractiveSession:
             self._toggle_verbose()
 
         elif command == "/compact":
+            await self._compact_memory()
+
+        elif command == "/compact-output":
             self._toggle_compact()
 
         else:

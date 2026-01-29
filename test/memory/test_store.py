@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from config import Config
 from llm.base import LLMMessage
 from memory.store import MemoryStore
 from memory.types import CompressedMemory
@@ -242,7 +243,7 @@ class TestBatchSave:
                 messages=[
                     LLMMessage(
                         role="user",
-                        content="[Previous conversation summary]\nEarlier conversation summary",
+                        content=f"{Config.COMPACT_SUMMARY_PREFIX}Earlier conversation summary",
                     )
                 ],
                 original_message_count=5,
@@ -304,7 +305,7 @@ class TestSummaryStorage:
         summary = CompressedMemory(
             messages=[
                 LLMMessage(
-                    role="user", content="[Previous conversation summary]\nThis is a summary"
+                    role="user", content=f"{Config.COMPACT_SUMMARY_PREFIX}This is a summary"
                 ),
                 LLMMessage(role="user", content="Important message"),
             ],
@@ -334,7 +335,7 @@ class TestSummaryStorage:
         for i in range(3):
             summary = CompressedMemory(
                 messages=[
-                    LLMMessage(role="user", content=f"[Previous conversation summary]\nSummary {i}")
+                    LLMMessage(role="user", content=f"{Config.COMPACT_SUMMARY_PREFIX}Summary {i}")
                 ],
                 original_message_count=5,
                 original_tokens=500,
@@ -392,7 +393,7 @@ class TestSessionRetrieval:
         await store.save_message(session_id, LLMMessage(role="assistant", content="Hi"), tokens=3)
 
         summary = CompressedMemory(
-            messages=[LLMMessage(role="user", content="[Previous conversation summary]\nSummary")],
+            messages=[LLMMessage(role="user", content=f"{Config.COMPACT_SUMMARY_PREFIX}Summary")],
             original_message_count=5,
             original_tokens=500,
             compressed_tokens=150,
@@ -466,7 +467,7 @@ class TestIntegration:
                 messages=[
                     LLMMessage(
                         role="user",
-                        content=f"[Previous conversation summary]\nSummary of batch {i}",
+                        content=f"{Config.COMPACT_SUMMARY_PREFIX}Summary of batch {i}",
                     )
                 ],
                 original_message_count=5,

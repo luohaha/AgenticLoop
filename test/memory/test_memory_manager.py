@@ -1,5 +1,6 @@
 """Unit tests for MemoryManager."""
 
+from config import Config
 from llm.base import LLMMessage
 from memory import MemoryManager
 from memory.types import CompressionStrategy
@@ -103,8 +104,6 @@ class TestMemoryCompression:
         # After 5 messages, compression should have been triggered and short-term cleared
         assert manager.compression_count == 1
         assert manager.was_compressed_last_iteration
-        # After compression, short-term is cleared so it's not full
-        assert not manager.short_term.is_full()
 
     async def test_compression_on_hard_limit(self, set_memory_config, mock_llm):
         """Test compression triggers on hard limit (compression threshold)."""
@@ -140,8 +139,7 @@ class TestMemoryCompression:
         # Check that summary message exists in short_term (at the front)
         context = manager.get_context_for_llm()
         has_summary = any(
-            isinstance(msg.content, str)
-            and msg.content.startswith("[Previous conversation summary]")
+            isinstance(msg.content, str) and msg.content.startswith(Config.COMPACT_SUMMARY_PREFIX)
             for msg in context
         )
         assert has_summary, "Summary message should be present after compression"
@@ -249,29 +247,15 @@ class TestToolCallMatching:
                 f"Detected mismatch - missing results: {missing_results}, missing uses: {missing_uses}"
             )
 
-    async def test_todo_context_provider_integration(
+    async def test_protected_tool_messages_preserved(
         self, set_memory_config, mock_llm, protected_tool_messages
     ):
-        """Test that todo context provider is called during compression.
-
-        Note: manage_todo_list is no longer in PROTECTED_TOOLS. Instead, todo state
-        is preserved via todo_context injection from MemoryManager's provider callback.
-        """
+        """Test that protected tool messages survive compression."""
         set_memory_config(
             MEMORY_SHORT_TERM_SIZE=10,  # Large enough to avoid auto-compression
             MEMORY_SHORT_TERM_MIN_SIZE=1,
         )
         manager = MemoryManager(mock_llm)
-
-        # Set up todo context provider
-        todo_context_called = False
-
-        def mock_todo_provider():
-            nonlocal todo_context_called
-            todo_context_called = True
-            return "1. [pending] Test task"
-
-        manager.set_todo_context_provider(mock_todo_provider)
 
         # Add messages
         for msg in protected_tool_messages:
@@ -280,19 +264,27 @@ class TestToolCallMatching:
         # Manually trigger compression
         compressed = await manager.compress(strategy=CompressionStrategy.SELECTIVE)
 
-        # Verify compression happened and provider was called
+        # Verify compression happened
         assert compressed is not None
-        assert todo_context_called, "Todo context provider should be called during compression"
 
-        # Verify todo context is in the summary
+        # Verify protected tool pair is preserved
         context = manager.get_context_for_llm()
-        summary_has_todo = False
+        tool_use_ids = set()
+        tool_result_ids = set()
         for msg in context:
-            if isinstance(msg.content, str) and "[Current Tasks]" in msg.content:
-                summary_has_todo = True
-                break
+            if isinstance(msg.content, list):
+                for block in msg.content:
+                    if isinstance(block, dict):
+                        if (
+                            block.get("type") == "tool_use"
+                            and block.get("name") == "manage_todo_list"
+                        ):
+                            tool_use_ids.add(block.get("id"))
+                        elif block.get("type") == "tool_result":
+                            tool_result_ids.add(block.get("tool_use_id"))
 
-        assert summary_has_todo, "Todo context should be injected into compression summary"
+        assert tool_use_ids
+        assert tool_use_ids == tool_result_ids
 
     async def test_multiple_tool_pairs_in_sequence(self, set_memory_config, mock_llm):
         """Test multiple consecutive tool_use/tool_result pairs."""
@@ -354,6 +346,91 @@ class TestToolCallMatching:
                             tool_result_ids.add(block.get("tool_use_id"))
 
         assert tool_use_ids == tool_result_ids
+
+
+class TestPairIntegrityRemoval:
+    """Test pair integrity when removing oldest messages."""
+
+    async def test_remove_oldest_with_pair_integrity(self, mock_llm):
+        """Removing oldest tool call should also remove its tool result."""
+        manager = MemoryManager(mock_llm)
+
+        tool_call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "tool_a", "arguments": "{}"},
+        }
+
+        await manager.add_message(
+            LLMMessage(role="assistant", content=None, tool_calls=[tool_call])
+        )
+        await manager.add_message(LLMMessage(role="tool", content="result", tool_call_id="call_1"))
+        await manager.add_message(LLMMessage(role="user", content="After tool"))
+
+        removed = manager.remove_oldest_with_pair_integrity()
+        assert removed is not None
+        assert removed.role == "assistant"
+
+        remaining = manager.short_term.get_messages()
+        assert len(remaining) == 1
+        assert remaining[0].role == "user"
+        assert remaining[0].content == "After tool"
+
+
+class TestNormalization:
+    """Test prompt normalization helpers."""
+
+    async def test_adds_synthetic_tool_output(self, mock_llm):
+        """Test synthetic outputs for orphaned tool calls."""
+        manager = MemoryManager(mock_llm)
+
+        tool_call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "tool_a", "arguments": "{}"},
+        }
+
+        await manager.add_message(
+            LLMMessage(role="assistant", content=None, tool_calls=[tool_call])
+        )
+
+        context = manager.get_context_for_llm()
+        assert any(
+            msg.role == "tool" and msg.tool_call_id == "call_1" and msg.content == "aborted"
+            for msg in context
+        )
+
+    async def test_removes_orphan_tool_outputs(self, mock_llm):
+        """Test removal of tool outputs without matching calls."""
+        manager = MemoryManager(mock_llm)
+
+        await manager.add_message(
+            LLMMessage(role="tool", content="result", tool_call_id="missing_call")
+        )
+
+        context = manager.get_context_for_llm()
+        assert not any(msg.role == "tool" for msg in context)
+
+
+class TestTruncation:
+    """Test write-time tool output truncation."""
+
+    async def test_truncates_large_tool_output(self, set_memory_config, mock_llm):
+        """Tool output should be truncated at write time."""
+        set_memory_config(
+            TOOL_OUTPUT_TRUNCATION_POLICY="tokens",
+            TOOL_OUTPUT_MAX_TOKENS=10,
+            TOOL_OUTPUT_SERIALIZATION_BUFFER=1.0,
+            APPROX_CHARS_PER_TOKEN=1,
+        )
+        manager = MemoryManager(mock_llm)
+
+        content = "x" * 30
+        await manager.add_message(LLMMessage(role="tool", content=content, tool_call_id="call_1"))
+
+        stored = manager.short_term.get_messages()[0]
+        assert stored.content != content
+        assert "...20 tokens truncated..." in stored.content
 
 
 class TestEdgeCases:
