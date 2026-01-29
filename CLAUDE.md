@@ -18,6 +18,17 @@ Optional (recommended): enable git hooks:
 pre-commit install
 ```
 
+## Branching Workflow
+
+**IMPORTANT**: Every change must be developed on a new branch using a git worktree, then merged into `main` via pull request.
+
+1. Create a worktree with a new branch: `git worktree add ../AgenticLoop-<branch-name> -b <branch-name>`
+2. Work in the worktree directory, commit changes there.
+3. Push the branch and open a PR to merge into `main`.
+4. After the PR is merged, clean up: `git worktree remove ../AgenticLoop-<branch-name>`
+
+Never commit directly to `main`. All changes go through PR review.
+
 ## CI
 
 GitHub Actions runs `./scripts/dev.sh precommit`, `./scripts/dev.sh test -q`, and strict typecheck on PRs.
