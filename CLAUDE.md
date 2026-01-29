@@ -71,7 +71,6 @@ python main.py --task "Calculate 1+1"
 
 - All tests: `python -m pytest test/`
 - Memory suite: `python -m pytest test/memory/ -v`
-- Script: `./scripts/test.sh`
 - Unified entrypoint: `./scripts/dev.sh test`
 - Integration tests: set `RUN_INTEGRATION_TESTS=1` (live LLM; may incur cost)
 
@@ -88,7 +87,6 @@ python -m isort .
 python -m ruff check --fix .
 ```
 
-Script: `./scripts/format.sh` (runs black + isort + ruff --fix)
 Unified entrypoint: `./scripts/dev.sh format`
 
 ### Lint / Typecheck
@@ -101,17 +99,15 @@ Unified entrypoint: `./scripts/dev.sh format`
 ### Build (Packaging)
 
 ```bash
-./scripts/build.sh
+./scripts/dev.sh build
 ```
-Unified entrypoint: `./scripts/dev.sh build`
 
 ### Publish (Manual / Interactive)
 
-`./scripts/publish.sh` defaults to an interactive confirmation and refuses to run without a TTY unless you pass `--yes`.
+`./scripts/dev.sh publish` defaults to an interactive confirmation and refuses to run without a TTY unless you pass `--yes`.
 
-- TestPyPI: `./scripts/publish.sh --test`
-- PyPI (manual): `./scripts/publish.sh`
-- Unified entrypoint: `./scripts/dev.sh publish`
+- TestPyPI: `./scripts/dev.sh publish --test`
+- PyPI (manual): `./scripts/dev.sh publish`
 
 ## Docs Pointers
 
