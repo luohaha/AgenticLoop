@@ -29,6 +29,12 @@ pre-commit install
 
 Never commit directly to `main`. All changes go through PR review.
 
+## Checkpoint Commits
+
+Prefer small, reviewable commits:
+- Commit after a “green” checkpoint (`./scripts/dev.sh precommit` + `./scripts/dev.sh test -q`).
+- Keep mechanical changes (formatting, renames) in their own commit when possible.
+
 ## CI
 
 GitHub Actions runs `./scripts/dev.sh precommit`, `./scripts/dev.sh test -q`, and strict typecheck on PRs.
@@ -53,7 +59,7 @@ Change impact reminders:
 - Config changes → update `docs/configuration.md`
 - Workflow scripts → update `AGENTS.md`, `docs/packaging.md`
 
-Run a quick smoke task (requires a configured provider in `.aloop/config`):
+Run a quick smoke task (requires a configured provider in `.aloop/models.yaml`):
 
 ```bash
 python main.py --task "Calculate 1+1"
@@ -122,7 +128,7 @@ Unified entrypoint: `./scripts/dev.sh format`
 
 ## Docs Pointers
 
-- Configuration & `.aloop/config`: `docs/configuration.md`
+- Configuration & `.aloop/models.yaml`: `docs/configuration.md`
 - Packaging & release checklist: `docs/packaging.md`
 - Extending tools/agents: `docs/extending.md`
 - Memory system: `docs/memory-management.md`, `docs/memory_persistence.md`
