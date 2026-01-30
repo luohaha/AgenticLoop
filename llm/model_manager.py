@@ -7,6 +7,7 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from utils import get_logger
 
@@ -61,6 +62,19 @@ def _coerce_bool(value: Any, default: bool) -> bool:
         if v in {"false", "0", "no", "n", "off"}:
             return False
     return default
+
+
+def _is_local_api_base(api_base: str | None) -> bool:
+    if not api_base:
+        return False
+    raw = str(api_base).strip()
+    if not raw:
+        return False
+    if "://" not in raw:
+        raw = f"http://{raw}"
+    parsed = urlparse(raw)
+    host = (parsed.hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "::1"}
 
 
 @dataclass
@@ -228,76 +242,15 @@ class ModelManager:
         self.current_model_id = model_id
         return self.get_current_model()
 
-    def add_model(
-        self,
-        model_id: str,
-        api_key: str | None = None,
-        api_base: str | None = None,
-        timeout: int = 600,
-        drop_params: bool = True,
-        **extra,
-    ) -> bool:
-        if not model_id or model_id in self.models:
-            return False
-        extra.pop("name", None)
-        self.models[model_id] = ModelProfile(
-            model_id=model_id,
-            api_key=api_key,
-            api_base=api_base,
-            timeout=timeout,
-            drop_params=drop_params,
-            extra=extra,
-        )
-        if not self.default_model_id:
-            self.default_model_id = model_id
-            self.current_model_id = model_id
-        self._save()
-        return True
-
-    def edit_model(self, model_id: str, **updates) -> bool:
-        if model_id not in self.models:
-            return False
-        profile = self.models[model_id]
-
-        for key, value in updates.items():
-            if key == "name":
-                # YAML doesn't support `name` anymore; ignore if present.
-                continue
-            if key == "api_key":
-                profile.api_key = None if value is None else str(value)
-            elif key == "api_base":
-                profile.api_base = None if value is None else str(value)
-            elif key == "timeout":
-                profile.timeout = _coerce_int(value, default=profile.timeout)
-            elif key == "drop_params":
-                profile.drop_params = _coerce_bool(value, default=profile.drop_params)
-            else:
-                profile.extra[key] = value
-
-        self._save()
-        return True
-
-    def remove_model(self, model_id: str) -> bool:
-        if model_id not in self.models:
-            return False
-        if self.current_model_id == model_id:
-            return False
-
-        del self.models[model_id]
-
-        if self.default_model_id == model_id:
-            self.default_model_id = next(iter(self.models.keys()), None)
-        if self.current_model_id and self.current_model_id not in self.models:
-            self.current_model_id = self.default_model_id
-
-        self._save()
-        return True
-
     def validate_model(self, model: ModelProfile) -> tuple[bool, str]:
         """Validate a model has required configuration."""
         if not model.model_id:
             return False, "Model ID is missing."
-        if model.provider not in {"ollama", "localhost"} and not (model.api_key or "").strip():
+        if (
+            model.provider not in {"ollama", "localhost"}
+            and not _is_local_api_base(model.api_base)
+            and not (model.api_key or "").strip()
+        ):
             return (
                 False,
                 f"API key not configured for {model.provider}. "

@@ -68,14 +68,15 @@ async def open_in_editor(path: str) -> tuple[bool, bool]:
     return False, False
 
 
-async def get_mtime(path: str) -> float | None:
+async def get_mtime(path: str) -> tuple[int, int] | None:
     try:
-        return (await aiofiles.os.stat(path)).st_mtime
+        stat = await aiofiles.os.stat(path)
+        return stat.st_mtime_ns, stat.st_size
     except FileNotFoundError:
         return None
 
 
-async def wait_for_file_change(path: str, old_mtime: float | None) -> None:
+async def wait_for_file_change(path: str, old_mtime: tuple[int, int] | None) -> None:
     while True:
         new_mtime = await get_mtime(path)
         if old_mtime is None:
