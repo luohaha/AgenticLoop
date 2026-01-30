@@ -6,7 +6,7 @@ import warnings
 
 from agent.react_agent import ReActAgent
 from config import Config
-from interactive import run_interactive_mode
+from interactive import run_interactive_mode, run_model_setup_mode
 from llm import LiteLLMAdapter, ModelManager
 from tools.advanced_file_ops import EditTool, GlobTool, GrepTool
 from tools.calculator import CalculatorTool
@@ -147,15 +147,25 @@ def main():
         terminal_ui.print_error(str(e), title="Configuration Error")
         return
 
-    # Create agent with optional model selection
+    # Create agent with optional model selection. If we're going into interactive mode and
+    # models aren't configured yet, enter a setup session first.
     try:
         agent = create_agent(model_id=args.model)
     except ValueError as e:
-        terminal_ui.print_error(str(e), title="Model Configuration Error")
-        terminal_ui.console.print(
-            "Edit `.aloop/models.yaml` to add models and set `default` (this file is gitignored)."
-        )
-        return
+        if args.task:
+            terminal_ui.print_error(str(e), title="Model Configuration Error")
+            terminal_ui.console.print(
+                "Edit `.aloop/models.yaml` to add models and set `default` (this file is gitignored)."
+            )
+            return
+
+        terminal_ui.print_error(str(e), title="Model Setup Required")
+        ready = asyncio.run(run_model_setup_mode())
+        if not ready:
+            return
+
+        # Retry after setup.
+        agent = create_agent(model_id=args.model)
 
     async def _run() -> None:
         # If no task provided, enter interactive mode (default behavior)

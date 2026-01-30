@@ -722,6 +722,284 @@ class InteractiveSession:
             terminal_ui.print_log_location(log_file)
 
 
+class ModelSetupSession:
+    """Lightweight interactive session for configuring models before the agent can run."""
+
+    def __init__(self, model_manager: ModelManager | None = None):
+        self.model_manager = model_manager or ModelManager()
+        self.input_handler = InputHandler(
+            history_file=get_history_file(),
+            commands=["help", "model", "continue", "start", "exit", "quit"],
+        )
+
+    def _show_help(self) -> None:
+        colors = Theme.get_colors()
+        terminal_ui.console.print(
+            f"\n[bold {colors.primary}]Model Setup[/bold {colors.primary}] "
+            f"[{colors.text_muted}](edit `.aloop/models.yaml`)[/{colors.text_muted}]\n"
+        )
+        terminal_ui.console.print(
+            f"[{colors.text_muted}]Commands:[/{colors.text_muted}]\n"
+            f"  /model                              - List models\n"
+            f"  /model add <model_id> key=value...  - Add model (api_key=..., name=..., api_base=...)\n"
+            f"  /model edit <model_id> key=value... - Edit model\n"
+            f"  /model default <model_id>           - Set default\n"
+            f"  /model show <model_id>              - Show model config\n"
+            f"  /model remove <model_id>            - Remove model\n"
+            f"  /model reload                        - Reload from disk\n"
+            f"  /continue                           - Validate and start agent\n"
+            f"  /exit                               - Quit\n"
+        )
+
+    def _show_models(self) -> None:
+        colors = Theme.get_colors()
+        models = self.model_manager.list_models()
+        current = self.model_manager.get_current_model()
+        default_model_id = self.model_manager.get_default_model_id()
+
+        terminal_ui.console.print(
+            f"\n[bold {colors.primary}]Configured Models:[/bold {colors.primary}]\n"
+        )
+
+        if not models:
+            terminal_ui.print_error("No models configured yet.")
+            terminal_ui.console.print(
+                f"[{colors.text_muted}]Use /model add ... or edit `.aloop/models.yaml`.[/{colors.text_muted}]\n"
+            )
+            return
+
+        for model in models:
+            markers: list[str] = []
+            if current and model.model_id == current.model_id:
+                markers.append(f"[{colors.success}]CURRENT[/{colors.success}]")
+            if default_model_id and model.model_id == default_model_id:
+                markers.append(f"[{colors.primary}]DEFAULT[/{colors.primary}]")
+            marker = (
+                " ".join(markers)
+                if markers
+                else f"[{colors.text_muted}]      [/{colors.text_muted}]"
+            )
+            terminal_ui.console.print(f"  {marker} {model.display_name} - {model.model_id}")
+
+        terminal_ui.console.print()
+
+    def _parse_kv_args(self, tokens: list[str]) -> tuple[dict[str, str], list[str]]:
+        kv: dict[str, str] = {}
+        rest: list[str] = []
+        for token in tokens:
+            if "=" in token:
+                k, _, v = token.partition("=")
+                kv[k.strip()] = v
+            else:
+                rest.append(token)
+        return kv, rest
+
+    def _mask_secret(self, value: str | None) -> str:
+        if not value:
+            return "(not set)"
+        v = value.strip()
+        if len(v) <= 8:
+            return "*" * len(v)
+        return f"{v[:4]}…{v[-4:]}"
+
+    async def _handle_model_command(self, user_input: str) -> None:
+        colors = Theme.get_colors()
+
+        try:
+            parts = shlex.split(user_input)
+        except ValueError as e:
+            terminal_ui.print_error(str(e), title="Invalid /model command")
+            return
+
+        if len(parts) == 1:
+            self._show_models()
+            return
+
+        sub = parts[1]
+
+        if sub == "reload":
+            self.model_manager.reload()
+            terminal_ui.print_success("Reloaded `.aloop/models.yaml`")
+            return
+
+        if sub == "add":
+            if len(parts) < 3:
+                terminal_ui.print_error("Usage: /model add <model_id> [name=...] [api_key=...] ...")
+                return
+            model_id = parts[2]
+            kv, _ = self._parse_kv_args(parts[3:])
+            name = kv.pop("name", "")
+            api_key = kv.pop("api_key", None)
+            api_base = kv.pop("api_base", None)
+            timeout = kv.pop("timeout", None)
+            drop_params = kv.pop("drop_params", None)
+
+            timeout_value = 600
+            if timeout is not None:
+                try:
+                    timeout_value = int(str(timeout).strip())
+                except ValueError:
+                    terminal_ui.print_error("timeout must be an integer (seconds)")
+                    return
+
+            drop_params_value = True
+            if drop_params is not None:
+                v = str(drop_params).strip().lower()
+                if v in {"true", "1", "yes", "y", "on"}:
+                    drop_params_value = True
+                elif v in {"false", "0", "no", "n", "off"}:
+                    drop_params_value = False
+                else:
+                    terminal_ui.print_error("drop_params must be true/false")
+                    return
+
+            ok = self.model_manager.add_model(
+                model_id=model_id,
+                name=name,
+                api_key=api_key,
+                api_base=api_base,
+                timeout=timeout_value,
+                drop_params=drop_params_value,
+                **kv,
+            )
+            if not ok:
+                terminal_ui.print_error(f"Model '{model_id}' already exists (or invalid).")
+                return
+            terminal_ui.print_success(f"Added model: {model_id}")
+            return
+
+        if sub == "edit":
+            if len(parts) < 4:
+                terminal_ui.print_error("Usage: /model edit <model_id> <field=value> ...")
+                return
+            model_id = parts[2]
+            kv, rest = self._parse_kv_args(parts[3:])
+            if rest:
+                terminal_ui.print_error(f"Invalid args (expected key=value): {', '.join(rest)}")
+                return
+            ok = self.model_manager.edit_model(model_id, **kv)
+            if not ok:
+                terminal_ui.print_error(f"Model '{model_id}' not found")
+                return
+            terminal_ui.print_success(f"Updated model: {model_id}")
+            return
+
+        if sub == "remove":
+            if len(parts) != 3:
+                terminal_ui.print_error("Usage: /model remove <model_id>")
+                return
+            model_id = parts[2]
+            current = self.model_manager.get_current_model()
+            if current and current.model_id == model_id:
+                terminal_ui.print_error("Cannot remove the current selected model. Switch first.")
+                return
+            ok = self.model_manager.remove_model(model_id)
+            if not ok:
+                terminal_ui.print_error(f"Model '{model_id}' not found (or is current).")
+                return
+            terminal_ui.print_success(f"Removed model: {model_id}")
+            return
+
+        if sub == "default":
+            if len(parts) != 3:
+                terminal_ui.print_error("Usage: /model default <model_id>")
+                return
+            model_id = parts[2]
+            ok = self.model_manager.set_default(model_id)
+            if not ok:
+                terminal_ui.print_error(f"Model '{model_id}' not found")
+                return
+            terminal_ui.print_success(f"Set default model: {model_id}")
+            return
+
+        if sub == "show":
+            if len(parts) != 3:
+                terminal_ui.print_error("Usage: /model show <model_id>")
+                return
+            model_id = parts[2]
+            model = self.model_manager.get_model(model_id)
+            if not model:
+                terminal_ui.print_error(f"Model '{model_id}' not found")
+                return
+            terminal_ui.console.print(
+                f"\n[bold {colors.primary}]Model:[/bold {colors.primary}] {model_id}"
+            )
+            terminal_ui.console.print(f"  Name: {model.name or '(not set)'}")
+            terminal_ui.console.print(f"  Provider: {model.provider}")
+            terminal_ui.console.print(f"  API key: {self._mask_secret(model.api_key)}")
+            terminal_ui.console.print(f"  API base: {model.api_base or '(not set)'}")
+            terminal_ui.console.print(f"  Timeout: {model.timeout}")
+            terminal_ui.console.print(f"  Drop params: {model.drop_params}\n")
+            return
+
+        # Otherwise treat as a model_id switch (in setup this only selects the model).
+        model_id = sub
+        model = self.model_manager.switch_model(model_id)
+        if not model:
+            available = ", ".join(self.model_manager.get_model_ids())
+            terminal_ui.print_error(f"Model '{model_id}' not found")
+            if available:
+                terminal_ui.console.print(
+                    f"[{colors.text_muted}]Available: {available}[/{colors.text_muted}]\n"
+                )
+            return
+        terminal_ui.print_success(f"Selected model: {model.display_name} ({model.model_id})")
+
+    async def run(self) -> bool:
+        colors = Theme.get_colors()
+        terminal_ui.print_header(
+            "Agentic Loop - Model Setup", subtitle="Configure `.aloop/models.yaml` to continue"
+        )
+        terminal_ui.console.print(
+            f"[{colors.text_muted}]Tip: Use /model add ... then /continue.[/{colors.text_muted}]\n"
+        )
+        self._show_help()
+
+        while True:
+            user_input = await self.input_handler.prompt_async("> ")
+            if not user_input:
+                continue
+
+            # Allow typing model_id without the /model prefix.
+            if not user_input.startswith("/"):
+                user_input = f"/model {user_input}"
+
+            parts = user_input.split()
+            cmd = parts[0].lower()
+
+            if cmd in ("/exit", "/quit"):
+                return False
+
+            if cmd == "/help":
+                self._show_help()
+                continue
+
+            if cmd == "/model":
+                await self._handle_model_command(user_input)
+                continue
+
+            if cmd in ("/continue", "/start"):
+                current = self.model_manager.get_current_model()
+                if not current:
+                    terminal_ui.print_error(
+                        "No models configured. Add one with /model add ... or edit `.aloop/models.yaml`."
+                    )
+                    continue
+
+                is_valid, error_msg = self.model_manager.validate_model(current)
+                if not is_valid:
+                    terminal_ui.print_error(error_msg)
+                    terminal_ui.console.print(
+                        f"[{colors.text_muted}]Fix the config and try /continue again.[/{colors.text_muted}]\n"
+                    )
+                    continue
+
+                terminal_ui.print_success("Model configuration looks good. Starting agent…")
+                return True
+
+            terminal_ui.print_error(f"Unknown command: {cmd}. Try /help.")
+
+
 async def run_interactive_mode(agent) -> None:
     """Run agent in interactive multi-turn conversation mode.
 
@@ -730,3 +1008,9 @@ async def run_interactive_mode(agent) -> None:
     """
     session = InteractiveSession(agent)
     await session.run()
+
+
+async def run_model_setup_mode(model_manager: ModelManager | None = None) -> bool:
+    """Run model setup mode; returns True when ready to start agent."""
+    session = ModelSetupSession(model_manager=model_manager)
+    return await session.run()
