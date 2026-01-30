@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from utils import get_logger
 
@@ -72,11 +73,11 @@ class ModelProfile:
 
     model_id: str  # LiteLLM model ID (e.g. "openai/gpt-4o")
     name: str = ""
-    api_key: Optional[str] = None
-    api_base: Optional[str] = None
+    api_key: str | None = None
+    api_base: str | None = None
     timeout: int = 600
     drop_params: bool = True
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @property
     def provider(self) -> str:
@@ -86,8 +87,8 @@ class ModelProfile:
     def display_name(self) -> str:
         return self.name or self.model_id
 
-    def to_dict(self) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"timeout": self.timeout, "drop_params": self.drop_params}
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"timeout": self.timeout, "drop_params": self.drop_params}
         if self.name:
             result["name"] = self.name
         if self.api_key:
@@ -104,11 +105,11 @@ class ModelManager:
 
     CONFIG_PATH = ".aloop/models.yaml"
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         self.config_path = config_path or self.CONFIG_PATH
-        self.models: Dict[str, ModelProfile] = {}
-        self.default_model_id: Optional[str] = None
-        self.current_model_id: Optional[str] = None
+        self.models: dict[str, ModelProfile] = {}
+        self.default_model_id: str | None = None
+        self.current_model_id: str | None = None
         self._load()
 
     def _ensure_yaml(self) -> None:
@@ -128,16 +129,11 @@ class ModelManager:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(content)
             os.replace(tmp_path, self.config_path)
-            try:
+            with suppress(OSError):
                 os.chmod(self.config_path, 0o600)
-            except OSError:
-                pass
         finally:
-            try:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-            except OSError:
-                pass
+            with suppress(OSError):
+                os.unlink(tmp_path)
 
     def _create_default_config(self) -> None:
         self._atomic_write(DEFAULT_CONFIG_TEMPLATE)
@@ -150,7 +146,7 @@ class ModelManager:
         if not os.path.exists(self.config_path):
             self._create_default_config()
 
-        with open(self.config_path, "r", encoding="utf-8") as f:
+        with open(self.config_path, encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
 
         models = config.get("models") or {}
@@ -209,19 +205,19 @@ class ModelManager:
     def is_configured(self) -> bool:
         return bool(self.models) and bool(self.default_model_id)
 
-    def get_model(self, model_id: str) -> Optional[ModelProfile]:
+    def get_model(self, model_id: str) -> ModelProfile | None:
         return self.models.get(model_id)
 
-    def list_models(self) -> List[ModelProfile]:
+    def list_models(self) -> list[ModelProfile]:
         return list(self.models.values())
 
-    def get_model_ids(self) -> List[str]:
+    def get_model_ids(self) -> list[str]:
         return list(self.models.keys())
 
-    def get_default_model_id(self) -> Optional[str]:
+    def get_default_model_id(self) -> str | None:
         return self.default_model_id
 
-    def get_current_model(self) -> Optional[ModelProfile]:
+    def get_current_model(self) -> ModelProfile | None:
         if not self.current_model_id:
             return None
         return self.models.get(self.current_model_id)
@@ -235,7 +231,7 @@ class ModelManager:
         self._save()
         return True
 
-    def switch_model(self, model_id: str) -> Optional[ModelProfile]:
+    def switch_model(self, model_id: str) -> ModelProfile | None:
         if model_id not in self.models:
             return None
         self.current_model_id = model_id
@@ -245,8 +241,8 @@ class ModelManager:
         self,
         model_id: str,
         name: str = "",
-        api_key: Optional[str] = None,
-        api_base: Optional[str] = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
         timeout: int = 600,
         drop_params: bool = True,
         **extra,

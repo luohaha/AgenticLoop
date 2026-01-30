@@ -82,23 +82,23 @@ class ModelProfile:
 
 class ModelManager:
     """Manages multiple models with YAML persistence."""
-    
+
     CONFIG_PATH = ".aloop/models.yaml"
-    
+
     def __init__(self):
         self.models: Dict[str, ModelProfile] = {}  # key = model_id
         self.default_model_id: Optional[str] = None
         self.current_model_id: Optional[str] = None
         self._load()
-    
+
     def _load(self) -> None:
         """Load models from YAML config."""
         if not os.path.exists(self.CONFIG_PATH):
             self._create_default_config()
-        
+
         with open(self.CONFIG_PATH, 'r') as f:
             config = yaml.safe_load(f)
-        
+
         for model_id, data in config.get('models', {}).items():
             self.models[model_id] = ModelProfile(
                 model_id=model_id,
@@ -108,21 +108,21 @@ class ModelManager:
                 timeout=data.get('timeout', 600),
                 drop_params=data.get('drop_params', True),
             )
-        
+
         self.default_model_id = config.get('default')
         if self.default_model_id in self.models:
             self.current_model_id = self.default_model_id
         elif self.models:
             self.default_model_id = next(iter(self.models.keys()))
             self.current_model_id = self.default_model_id
-    
+
     def _save(self) -> None:
         """Save models to YAML config."""
         config = {
             'models': {},
             'default': self.default_model_id
         }
-        
+
         for model_id, profile in self.models.items():
             config['models'][model_id] = {
                 'name': profile.name,
@@ -131,7 +131,7 @@ class ModelManager:
                 'timeout': profile.timeout,
                 'drop_params': profile.drop_params,
             }
-        
+
         with open(self.CONFIG_PATH, 'w') as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 ```
@@ -178,7 +178,7 @@ def _create_default_config(self) -> None:
     """Create default models.yaml template."""
     template = """# Model Configuration
 # This file is gitignored - do not commit to version control
-# 
+#
 # Supported fields:
 #   - name: Display name
 #   - api_key: API key
@@ -209,7 +209,7 @@ class BaseAgent:
     def __init__(self, llm, tools, model_manager: ModelManager, ...):
         self.llm = llm
         self.model_manager = model_manager
-    
+
     def switch_model(self, model_id: str) -> bool:
         """Switch to a different model."""
         profile = self.model_manager.switch_model(model_id)

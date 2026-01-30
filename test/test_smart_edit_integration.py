@@ -29,7 +29,9 @@ def test_smart_edit_in_agent():
         pytest.skip(error_msg)
 
     if profile.provider == "ollama" and not profile.api_base:
-        pytest.skip("Ollama model requires api_base in .aloop/models.yaml (e.g. http://localhost:11434)")
+        pytest.skip(
+            "Ollama model requires api_base in .aloop/models.yaml (e.g. http://localhost:11434)"
+        )
 
     # Create a temporary test file
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".py") as f:

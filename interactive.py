@@ -388,17 +388,17 @@ class InteractiveSession:
                 markers.append(f"[{colors.success}]CURRENT[/{colors.success}]")
             if default_model_id and profile.model_id == default_model_id:
                 markers.append(f"[{colors.primary}]DEFAULT[/{colors.primary}]")
-            marker = " ".join(markers) if markers else f"[{colors.text_muted}]      [/{colors.text_muted}]"
+            marker = (
+                " ".join(markers)
+                if markers
+                else f"[{colors.text_muted}]      [/{colors.text_muted}]"
+            )
 
             label = profile.display_name
             if current and profile.model_id == current.model_id:
-                terminal_ui.console.print(
-                    f"  {marker} {label} - {profile.model_id}"
-                )
+                terminal_ui.console.print(f"  {marker} {label} - {profile.model_id}")
             else:
-                terminal_ui.console.print(
-                    f"  {marker} {label} - {profile.model_id}"
-                )
+                terminal_ui.console.print(f"  {marker} {label} - {profile.model_id}")
 
         terminal_ui.console.print(
             f"\n[{colors.text_muted}]Use /model <model_id> to switch models[/{colors.text_muted}]\n"
@@ -452,7 +452,7 @@ class InteractiveSession:
                 rest.append(token)
         return kv, rest
 
-    def _mask_secret(self, value: Optional[str]) -> str:
+    def _mask_secret(self, value: str | None) -> str:
         if not value:
             return "(not set)"
         v = value.strip()
@@ -598,7 +598,9 @@ class InteractiveSession:
             if not profile:
                 terminal_ui.print_error(f"Model '{model_id}' not found")
                 return
-            terminal_ui.console.print(f"\n[bold {colors.primary}]Model:[/bold {colors.primary}] {model_id}")
+            terminal_ui.console.print(
+                f"\n[bold {colors.primary}]Model:[/bold {colors.primary}] {model_id}"
+            )
             terminal_ui.console.print(f"  Name: {profile.name or '(not set)'}")
             terminal_ui.console.print(f"  Provider: {profile.provider}")
             terminal_ui.console.print(f"  API key: {self._mask_secret(profile.api_key)}")
