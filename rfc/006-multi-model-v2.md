@@ -1,5 +1,7 @@
 # RFC: Multi-Model Configuration and Runtime Switching (v2)
 
+Status: **Completed** (2026-01-30)
+
 ## Problem Statement
 
 AgenticLoop historically behaves like a single-model app. Users need to:
@@ -106,7 +108,7 @@ Most model operations (add/remove/default) are config edits. Keeping them in one
 
 ### 3. No ENV/Legacy Compatibility
 
-The system does not attempt to read `LITELLM_*` or previous model config formats.
+The system does not attempt to read previous env-based or legacy model config formats.
 
 ## Success Criteria
 

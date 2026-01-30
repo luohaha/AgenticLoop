@@ -88,6 +88,8 @@ What would you like me to help you with?
 
 ## Using Different LLM Providers
 
+Models are configured only via `.aloop/models.yaml` (do not use legacy env-based config).
+
 ### With OpenAI GPT
 
 ```bash

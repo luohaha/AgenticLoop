@@ -52,7 +52,7 @@ TYPECHECK_STRICT=1 ./scripts/dev.sh typecheck
 ```
 
 Manual doc/workflow checks:
-- README/AGENTS/docs: avoid legacy/removed commands (`LLM_PROVIDER`, `pip install -e`, `requirements.txt`, `setup.py`)
+- README/AGENTS/docs: avoid legacy/removed commands or env-based config; use current docs only
 - Docker examples use `--mode`/`--task`
 - Python 3.12+ + uv-only prerequisites documented consistently
 
