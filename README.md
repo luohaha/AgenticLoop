@@ -245,6 +245,9 @@ See the [Configuration Guide](docs/configuration.md) for all options. Key settin
 | `MAX_ITERATIONS` | Maximum agent iterations | `100` |
 | `MEMORY_COMPRESSION_THRESHOLD` | Compress when exceeded | `25000` |
 | `MEMORY_SHORT_TERM_SIZE` | Recent messages to keep | `100` |
+| `COMPACT_USER_MESSAGE_MAX_TOKENS` | User message budget during compaction | `20000` |
+| `TOOL_OUTPUT_TRUNCATION_POLICY` | Truncate tool outputs (`none|bytes|tokens`) | `tokens` |
+| `CONTEXT_OVERFLOW_MAX_RETRIES` | Retries on context overflow | `3` |
 | `RETRY_MAX_ATTEMPTS` | Retry attempts for rate limits | `3` |
 | `LOG_LEVEL` | Logging level | `DEBUG` |
 

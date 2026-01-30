@@ -1,7 +1,7 @@
 """Core memory manager that orchestrates all memory operations."""
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from config import Config
 from llm.content_utils import content_has_tool_calls
@@ -12,6 +12,7 @@ from .compressor import WorkingMemoryCompressor
 from .short_term import ShortTermMemory
 from .store import MemoryStore
 from .token_tracker import TokenTracker
+from .truncate import truncate_tool_output
 from .types import CompressedMemory, CompressionStrategy
 
 logger = logging.getLogger(__name__)
@@ -68,10 +69,6 @@ class MemoryManager:
         self.was_compressed_last_iteration = False
         self.last_compression_savings = 0
         self.compression_count = 0
-
-        # Optional callback to get current todo context for compression
-        # This allows injecting todo state into summaries without coupling to TodoList
-        self._todo_context_provider: Optional[Callable[[], Optional[str]]] = None
 
     @classmethod
     async def from_session(
@@ -157,6 +154,9 @@ class MemoryManager:
             self.system_messages.append(message)
             return
 
+        # Truncate large tool outputs before storing
+        message = self._maybe_truncate_tool_output(message)
+
         # Count tokens (use actual if provided, otherwise estimate)
         if actual_tokens:
             # Use actual token counts from LLM response
@@ -226,19 +226,7 @@ class MemoryManager:
         # 2. Add short-term memory (includes summary messages and recent messages)
         context.extend(self.short_term.get_messages())
 
-        return context
-
-    def set_todo_context_provider(self, provider: Callable[[], Optional[str]]) -> None:
-        """Set a callback to provide current todo context for compression.
-
-        The provider should return a formatted string of current todo items,
-        or None if no todos exist. This context will be injected into
-        compression summaries to preserve task state.
-
-        Args:
-            provider: Callable that returns current todo context string or None
-        """
-        self._todo_context_provider = provider
+        return self._normalize_for_prompt(context)
 
     async def compress(self, strategy: str = None) -> Optional[CompressedMemory]:
         """Compress current short-term memory.
@@ -266,17 +254,12 @@ class MemoryManager:
         logger.info(f"🗜️  Compressing {message_count} messages using {strategy} strategy")
 
         try:
-            # Get todo context if provider is set
-            todo_context = None
-            if self._todo_context_provider:
-                todo_context = self._todo_context_provider()
-
             # Perform compression
+            # Note: todo state is preserved via PROTECTED_TOOLS (manage_todo_list)
             compressed = await self.compressor.compress(
                 messages,
                 strategy=strategy,
                 target_tokens=self._calculate_target_tokens(),
-                todo_context=todo_context,
             )
 
             # Track compression results
@@ -393,6 +376,212 @@ class MemoryManager:
 
         # Legacy/centralized check on content
         return content_has_tool_calls(message.content)
+
+    def _maybe_truncate_tool_output(self, message: LLMMessage) -> LLMMessage:
+        """Truncate tool output content if it exceeds configured limits."""
+        if message.role != "tool":
+            return message
+        if not isinstance(message.content, str):
+            return message
+
+        result = truncate_tool_output(
+            content=message.content,
+            policy=Config.TOOL_OUTPUT_TRUNCATION_POLICY,
+            max_tokens=Config.TOOL_OUTPUT_MAX_TOKENS,
+            max_bytes=Config.TOOL_OUTPUT_MAX_BYTES,
+            serialization_buffer=Config.TOOL_OUTPUT_SERIALIZATION_BUFFER,
+            approx_chars_per_token=Config.APPROX_CHARS_PER_TOKEN,
+        )
+
+        if not result.truncated:
+            return message
+
+        return LLMMessage(
+            role=message.role,
+            content=result.content,
+            tool_calls=message.tool_calls,
+            tool_call_id=message.tool_call_id,
+            name=message.name,
+        )
+
+    def remove_oldest_with_pair_integrity(self) -> Optional[LLMMessage]:
+        """Remove oldest message and its corresponding tool pair (if any)."""
+        messages = self.short_term.get_messages()
+        if not messages:
+            return None
+
+        oldest = messages[0]
+        call_ids = set(self._extract_tool_call_ids(oldest))
+
+        if not call_ids and oldest.role == "tool" and oldest.tool_call_id:
+            call_ids.add(oldest.tool_call_id)
+
+        if not call_ids and self._has_legacy_tool_results(oldest):
+            call_ids.update(self._extract_tool_result_ids(oldest))
+
+        if call_ids:
+            filtered = self._remove_messages_by_tool_call_ids(messages, call_ids)
+            if filtered and filtered[0] == oldest:
+                filtered = filtered[1:]
+        else:
+            filtered = messages[1:]
+
+        self.short_term.clear()
+        for msg in filtered:
+            self.short_term.add_message(msg)
+
+        self.current_tokens = self._recalculate_current_tokens()
+
+        return oldest
+
+    def _remove_messages_by_tool_call_ids(
+        self, messages: List[LLMMessage], call_ids: set[str]
+    ) -> List[LLMMessage]:
+        """Remove all tool calls/results matching given call IDs."""
+        filtered: List[LLMMessage] = []
+        for msg in messages:
+            if msg.role == "assistant" and self._message_has_call_id(msg, call_ids):
+                continue
+            if msg.role == "tool" and msg.tool_call_id in call_ids:
+                continue
+            if self._has_legacy_tool_results(msg) and self._message_has_result_id(msg, call_ids):
+                continue
+            filtered.append(msg)
+        return filtered
+
+    def _normalize_for_prompt(self, messages: List[LLMMessage]) -> List[LLMMessage]:
+        """Normalize messages to ensure tool call/output integrity before LLM call."""
+        normalized = self.ensure_call_outputs_present(messages)
+        normalized = self.remove_orphan_outputs(normalized)
+        return normalized
+
+    def ensure_call_outputs_present(self, messages: List[LLMMessage]) -> List[LLMMessage]:
+        """Add synthetic 'aborted' output for orphaned tool calls."""
+        existing_outputs = set()
+        for msg in messages:
+            if msg.role == "tool" and msg.tool_call_id:
+                existing_outputs.add(msg.tool_call_id)
+            if self._has_legacy_tool_results(msg):
+                existing_outputs.update(self._extract_tool_result_ids(msg))
+
+        normalized: List[LLMMessage] = []
+        for msg in messages:
+            normalized.append(msg)
+            for call_id, tool_name in self._extract_tool_call_id_pairs(msg):
+                if call_id in existing_outputs:
+                    continue
+                normalized.append(
+                    LLMMessage(
+                        role="tool",
+                        content="aborted",
+                        tool_call_id=call_id,
+                        name=tool_name or None,
+                    )
+                )
+                existing_outputs.add(call_id)
+
+        return normalized
+
+    def remove_orphan_outputs(self, messages: List[LLMMessage]) -> List[LLMMessage]:
+        """Remove tool results without matching calls."""
+        call_ids = set()
+        for msg in messages:
+            call_ids.update(self._extract_tool_call_ids(msg))
+
+        filtered: List[LLMMessage] = []
+        for msg in messages:
+            if msg.role == "tool" and msg.tool_call_id and msg.tool_call_id not in call_ids:
+                continue
+            if self._has_legacy_tool_results(msg):
+                assert isinstance(msg.content, list)  # for type checker
+                filtered_blocks = [
+                    block
+                    for block in msg.content
+                    if not self._is_orphan_tool_result_block(block, call_ids)
+                ]
+                if not filtered_blocks:
+                    continue
+                # Note: content here is a list, which LLMMessage accepts via Any
+                filtered.append(
+                    LLMMessage(
+                        role=msg.role,
+                        content=filtered_blocks,  # type: ignore[arg-type]
+                        tool_calls=msg.tool_calls,
+                        tool_call_id=msg.tool_call_id,
+                        name=msg.name,
+                    )
+                )
+                continue
+            filtered.append(msg)
+
+        return filtered
+
+    def _extract_tool_call_id_pairs(self, message: LLMMessage) -> List[tuple[str, str]]:
+        pairs: List[tuple[str, str]] = []
+        if message.role != "assistant":
+            return pairs
+
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                if isinstance(tc, dict):
+                    call_id = tc.get("id")
+                    tool_name = tc.get("function", {}).get("name", "")
+                else:
+                    call_id = getattr(tc, "id", None)
+                    tool_name = getattr(getattr(tc, "function", None), "name", "") if tc else ""
+                if call_id:
+                    pairs.append((call_id, tool_name))
+            return pairs
+
+        if isinstance(message.content, list):
+            for block in message.content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    call_id = block.get("id")
+                    tool_name = block.get("name", "")
+                elif hasattr(block, "type") and block.type == "tool_use":
+                    call_id = getattr(block, "id", None)
+                    tool_name = getattr(block, "name", "")
+                else:
+                    continue
+                if call_id:
+                    pairs.append((call_id, tool_name))
+
+        return pairs
+
+    def _extract_tool_call_ids(self, message: LLMMessage) -> List[str]:
+        return [call_id for call_id, _ in self._extract_tool_call_id_pairs(message)]
+
+    def _has_legacy_tool_results(self, message: LLMMessage) -> bool:
+        return message.role == "user" and isinstance(message.content, list)
+
+    def _extract_tool_result_ids(self, message: LLMMessage) -> List[str]:
+        ids: List[str] = []
+        if not self._has_legacy_tool_results(message):
+            return ids
+        assert isinstance(message.content, list)  # for type checker
+        for block in message.content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                tool_use_id = block.get("tool_use_id")
+            elif hasattr(block, "type") and block.type == "tool_result":
+                tool_use_id = getattr(block, "tool_use_id", None)
+            else:
+                continue
+            if tool_use_id:
+                ids.append(tool_use_id)
+        return ids
+
+    def _message_has_call_id(self, message: LLMMessage, call_ids: set[str]) -> bool:
+        return any(call_id in call_ids for call_id in self._extract_tool_call_ids(message))
+
+    def _message_has_result_id(self, message: LLMMessage, call_ids: set[str]) -> bool:
+        return any(result_id in call_ids for result_id in self._extract_tool_result_ids(message))
+
+    def _is_orphan_tool_result_block(self, block, call_ids: set[str]) -> bool:
+        if isinstance(block, dict) and block.get("type") == "tool_result":
+            return block.get("tool_use_id") not in call_ids
+        if hasattr(block, "type") and block.type == "tool_result":
+            return getattr(block, "tool_use_id", None) not in call_ids
+        return False
 
     def _calculate_target_tokens(self) -> int:
         """Calculate target token count for compression.

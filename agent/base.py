@@ -3,7 +3,9 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
+from config import Config
 from llm import LLMMessage, LLMResponse, StopReason, ToolResult
+from llm.retry import is_context_length_error
 from memory import MemoryManager
 from tools.base import BaseTool
 from tools.todo import TodoTool
@@ -52,10 +54,6 @@ class BaseAgent(ABC):
         # Initialize memory manager (uses Config directly)
         self.memory = MemoryManager(llm)
 
-        # Set up todo context provider for memory compression
-        # This injects current todo state into summaries instead of preserving all todo messages
-        self.memory.set_todo_context_provider(self._get_todo_context)
-
     @abstractmethod
     def run(self, task: str) -> str:
         """Execute the agent on a task and return final answer."""
@@ -84,6 +82,42 @@ class BaseAgent(ABC):
                 messages=messages, tools=tools, max_tokens=4096, **kwargs
             )
 
+    async def _call_with_overflow_recovery(
+        self,
+        tools: Optional[List] = None,
+        spinner_message: str = "Thinking...",
+        **kwargs,
+    ) -> LLMResponse:
+        """Call LLM with context overflow recovery."""
+        last_error: Optional[BaseException] = None
+        max_retries = max(0, Config.CONTEXT_OVERFLOW_MAX_RETRIES)
+
+        for attempt in range(max_retries + 1):
+            context = self.memory.get_context_for_llm()
+            try:
+                return await self._call_llm(
+                    messages=context,
+                    tools=tools,
+                    spinner_message=spinner_message,
+                    **kwargs,
+                )
+            except Exception as e:  # noqa: BLE001
+                if not is_context_length_error(e):
+                    raise
+                last_error = e
+                removed = self.memory.remove_oldest_with_pair_integrity()
+                if removed is None:
+                    break
+                logger.warning(
+                    "Context length exceeded; removed oldest message and retrying (%s/%s)",
+                    attempt + 1,
+                    max_retries + 1,
+                )
+
+        if last_error:
+            raise last_error
+        raise RuntimeError("Context overflow recovery failed without an error.")
+
     def _extract_text(self, response: LLMResponse) -> str:
         """Extract text from LLM response.
 
@@ -94,17 +128,6 @@ class BaseAgent(ABC):
             Extracted text
         """
         return self.llm.extract_text(response)
-
-    def _get_todo_context(self) -> Optional[str]:
-        """Get current todo list state for memory compression.
-
-        Returns formatted todo list if items exist, None otherwise.
-        This is used by MemoryManager to inject todo state into summaries.
-        """
-        items = self.todo_list.get_current()
-        if not items:
-            return None
-        return self.todo_list.format_list()
 
     async def _react_loop(
         self,
@@ -135,11 +158,19 @@ class BaseAgent(ABC):
             context = self.memory.get_context_for_llm() if use_memory else messages
 
             # Call LLM with tools
-            response = await self._call_llm(
-                messages=context,
-                tools=tools,
-                spinner_message="Analyzing request...",
-            )
+            if use_memory:
+                response = await self._call_with_overflow_recovery(
+                    tools=tools,
+                    spinner_message="Analyzing request...",
+                )
+            else:
+                normalized = self.memory.ensure_call_outputs_present(context)
+                normalized = self.memory.remove_orphan_outputs(normalized)
+                response = await self._call_llm(
+                    messages=normalized,
+                    tools=tools,
+                    spinner_message="Analyzing request...",
+                )
 
             # Save assistant response using response.to_message() for proper format
             assistant_msg = response.to_message()

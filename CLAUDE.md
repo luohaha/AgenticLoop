@@ -159,6 +159,16 @@ Avoid over-specifying implementation details; focus on the "what" and "why", not
 
 Review existing RFCs before implementation to understand design decisions and constraints.
 
+## Code Review Standards (RFC Conformance)
+
+When reviewing code against an RFC:
+
+1. **State the RFC's core invariant in one sentence** before reading code
+2. **Trace data flow**: for key variables, verify input set == output set
+3. **Check all paths**: normal, fallback, error — do they all satisfy the invariant?
+
+If you can't answer "yes" with line numbers, dig deeper.
+
 ## Async Runtime Rules
 
 - **New runtime code must be async-first**: avoid introducing new blocking I/O in `agent/`, `llm/`, `memory/`, and `tools/`.
