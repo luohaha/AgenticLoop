@@ -69,6 +69,22 @@ AI agent's answer fully and correctly completes the user's original task.
 
 {previous_context}
 
+<judgment_rules>
+1. If the task is a ONE-TIME request (e.g. "calculate 1+1", "summarize this file"), \
+judge whether the answer is correct and complete.
+
+2. If the task is RECURRING or ONGOING (e.g. "every N minutes do X", "monitor Y", \
+"periodically check Z"), the task is INCOMPLETE if the agent stopped and gave a \
+final answer instead of continuing the cycle. A recurring task should never \
+produce a final answer — the agent must keep looping (calling timer/scheduler \
+tools and performing the action repeatedly). If the agent answered only once \
+and stopped, respond INCOMPLETE and instruct it to continue the recurring cycle \
+using the timer tool.
+
+3. If the task requires MULTIPLE steps and only some were done, respond INCOMPLETE \
+with specific feedback on what remains.
+</judgment_rules>
+
 Respond with EXACTLY one of:
 - COMPLETE: <brief reason why the task is satisfied>
 - INCOMPLETE: <specific feedback on what is missing or wrong>
