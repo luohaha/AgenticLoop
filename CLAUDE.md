@@ -34,6 +34,8 @@ Never commit directly to `main`. All changes go through PR review.
 Prefer small, reviewable commits:
 - Before committing, run `./scripts/dev.sh check` (precommit + typecheck + tests).
 - Keep mechanical changes (formatting, renames) in their own commit when possible.
+- **Human-in-the-loop**: at key checkpoints, the agent should *ask* whether to `git commit` and/or `git push` (do not do it automatically).
+- Before asking to commit, show a short change summary (e.g. `git diff --stat`) and the `./scripts/dev.sh check` result.
 
 ## CI
 
