@@ -382,7 +382,7 @@ class BaseAgent(ABC):
                 f"Please address the feedback and provide a complete answer."
             )
             # Print the incomplete result so the user can see what the agent produced
-            terminal_ui.print_final_answer(result)
+            terminal_ui.print_unfinished_answer(result)
 
             logger.debug(f"Ralph loop: injecting feedback — {verification.reason}")
             terminal_ui.console.print(

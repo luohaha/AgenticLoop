@@ -182,6 +182,26 @@ def print_final_answer(answer: str) -> None:
     )
 
 
+def print_unfinished_answer(answer: str) -> None:
+    """Print an intermediate answer that did not pass verification.
+
+    Args:
+        answer: Answer text (supports Markdown)
+    """
+    colors = _get_colors()
+    console.print()
+    md = Markdown(answer)
+    console.print(
+        Panel(
+            md,
+            title=f"[bold {colors.warning}]Unfinished Answer[/bold {colors.warning}]",
+            border_style=colors.warning,
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+
+
 def print_memory_stats(stats: Dict[str, Any]) -> None:
     """Print memory statistics in a formatted table.
 
