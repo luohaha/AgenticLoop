@@ -260,6 +260,8 @@ class AsyncSpinner:
 
     async def __aenter__(self) -> "AsyncSpinner":
         """Async context manager entry."""
+        if self.console.quiet:
+            return self
         self._start_time = time.time()
         self._running = True
         self._live = Live(

@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import warnings
 
+from rich.console import Console
+
 from agent.agent import ReActAgent
 from config import Config
 from interactive import run_interactive_mode, run_model_setup_mode
@@ -21,7 +23,7 @@ from tools.shell_background import BackgroundTaskManager, ShellTaskStatusTool
 from tools.smart_edit import SmartEditTool
 from tools.web_fetch import WebFetchTool
 from tools.web_search import WebSearchTool
-from utils import get_log_file_path, setup_logger, terminal_ui
+from utils import setup_logger, terminal_ui
 from utils.runtime import ensure_runtime_dirs
 
 warnings.filterwarnings("ignore", message="Pydantic serializer warnings.*", category=UserWarning)
@@ -221,38 +223,13 @@ def main():
         # Single-turn mode: execute one task and exit
         task = args.task
 
-        # Display header and config
-        terminal_ui.print_header(
-            "🤖 Agentic Loop System", subtitle="Intelligent AI Agent with Tool-Calling Capabilities"
-        )
-
-        # Get current model info for display
-        model_info = agent.get_current_model_info()
-        if model_info:
-            model_display = model_info["model_id"]
-            provider_display = model_info["provider"].upper()
-        else:
-            model_display = "NOT CONFIGURED"
-            provider_display = "UNKNOWN"
-
-        config_dict = {
-            "LLM Provider": provider_display,
-            "Model": model_display,
-            "Task": task if len(task) < 100 else task[:97] + "...",
-        }
-        if args.resume:
-            config_dict["Resumed Session"] = agent.memory.session_id or "N/A"
-        terminal_ui.print_config(config_dict)
+        # Quiet mode: suppress all Rich UI output, print raw result only
+        terminal_ui.console = Console(quiet=True)
 
         # Run agent
         result = await agent.run(task)
 
-        terminal_ui.print_final_answer(result)
-
-        # Show log file location
-        log_file = get_log_file_path()
-        if log_file:
-            terminal_ui.print_log_location(log_file)
+        print(result)
 
     asyncio.run(_run())
 
