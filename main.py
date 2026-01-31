@@ -8,6 +8,7 @@ from agent.agent import ReActAgent
 from config import Config
 from interactive import run_interactive_mode, run_model_setup_mode
 from llm import LiteLLMAdapter, ModelManager
+from memory import MemoryManager
 from tools.advanced_file_ops import EditTool, GlobTool, GrepTool
 from tools.calculator import CalculatorTool
 from tools.code_navigator import CodeNavigatorTool
@@ -107,6 +108,30 @@ def create_agent(model_id: str | None = None):
     return agent
 
 
+async def _resolve_session_id(resume_arg: str) -> str:
+    """Resolve --resume argument to a full session ID.
+
+    Args:
+        resume_arg: "latest" or a session ID / prefix
+
+    Returns:
+        Full session ID
+
+    Raises:
+        ValueError: If session cannot be found
+    """
+    if resume_arg == "latest":
+        session_id = await MemoryManager.find_latest_session()
+        if not session_id:
+            raise ValueError("No sessions found to resume.")
+        return session_id
+
+    session_id = await MemoryManager.find_session_by_prefix(resume_arg)
+    if not session_id:
+        raise ValueError(f"Session '{resume_arg}' not found.")
+    return session_id
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Run an AI agent with tool-calling capabilities")
@@ -128,6 +153,13 @@ def main():
         type=str,
         help="Model to use (LiteLLM model ID, e.g. openai/gpt-4o)",
     )
+    parser.add_argument(
+        "--resume",
+        "-r",
+        nargs="?",
+        const="latest",
+        help="Resume a previous session (session ID prefix or 'latest')",
+    )
 
     args = parser.parse_args()
 
@@ -144,6 +176,16 @@ def main():
     except ValueError as e:
         terminal_ui.print_error(str(e), title="Configuration Error")
         return
+
+    # Resolve --resume session ID early (before agent creation) so we can fail fast
+    resume_session_id = None
+    if args.resume:
+        try:
+            resume_session_id = asyncio.run(_resolve_session_id(args.resume))
+            terminal_ui.print_info(f"Resuming session: {resume_session_id}")
+        except ValueError as e:
+            terminal_ui.print_error(str(e), title="Resume Error")
+            return
 
     # Create agent with optional model selection. If we're going into interactive mode and
     # models aren't configured yet, enter a setup session first.
@@ -167,6 +209,10 @@ def main():
         agent = create_agent(model_id=args.model)
 
     async def _run() -> None:
+        # Load resumed session if requested
+        if resume_session_id:
+            await agent.load_session(resume_session_id)
+
         # If no task provided, enter interactive mode (default behavior)
         if not args.task:
             await run_interactive_mode(agent)
@@ -194,6 +240,8 @@ def main():
             "Model": model_display,
             "Task": task if len(task) < 100 else task[:97] + "...",
         }
+        if args.resume:
+            config_dict["Resumed Session"] = agent.memory.session_id or "N/A"
         terminal_ui.print_config(config_dict)
 
         # Run agent

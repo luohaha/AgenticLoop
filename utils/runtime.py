@@ -2,10 +2,9 @@
 
 All runtime data is stored under .aloop/ directory:
 - config: Configuration file (created by config.py on first import)
-- db/memory.db: SQLite database for memory persistence
+- sessions/: YAML-based session persistence
 - logs/: Log files (only created with --verbose)
 - history: Interactive mode command history
-- exports/: Memory dump exports
 """
 
 import os
@@ -31,13 +30,13 @@ def get_config_file() -> str:
     return os.path.join(RUNTIME_DIR, "config")
 
 
-def get_db_path() -> str:
-    """Get the database file path.
+def get_sessions_dir() -> str:
+    """Get the sessions directory path.
 
     Returns:
-        Path to .aloop/db/memory.db
+        Path to .aloop/sessions/
     """
-    return os.path.join(RUNTIME_DIR, "db", "memory.db")
+    return os.path.join(RUNTIME_DIR, "sessions")
 
 
 def get_log_dir() -> str:
@@ -58,21 +57,11 @@ def get_history_file() -> str:
     return os.path.join(RUNTIME_DIR, "history")
 
 
-def get_exports_dir() -> str:
-    """Get the exports directory path.
-
-    Returns:
-        Path to .aloop/exports/
-    """
-    return os.path.join(RUNTIME_DIR, "exports")
-
-
 def ensure_runtime_dirs(create_logs: bool = False) -> None:
     """Ensure runtime directories exist.
 
     Creates:
-    - .aloop/db/
-    - .aloop/exports/
+    - .aloop/sessions/
     - .aloop/logs/ (only if create_logs=True)
 
     Note: .aloop/config is created by config.py on first import.
@@ -80,8 +69,7 @@ def ensure_runtime_dirs(create_logs: bool = False) -> None:
     Args:
         create_logs: Whether to create the logs directory (for --verbose mode)
     """
-    os.makedirs(os.path.join(RUNTIME_DIR, "db"), exist_ok=True)
-    os.makedirs(os.path.join(RUNTIME_DIR, "exports"), exist_ok=True)
+    os.makedirs(os.path.join(RUNTIME_DIR, "sessions"), exist_ok=True)
 
     if create_logs:
         os.makedirs(os.path.join(RUNTIME_DIR, "logs"), exist_ok=True)

@@ -2,25 +2,62 @@
 
 ## Overview
 
-Memory Persistence provides an embedded SQLite database for persisting conversation memory. Key features:
+Memory persistence stores conversation sessions as human-readable YAML files under `.aloop/sessions/`. Key features:
 
-1. **Session Management**: Each conversation is saved as a session
-2. **Batch Persistence**: Memory is saved as a batch after task completion (efficient)
-3. **History Viewing**: View historical sessions and restore them
-4. **Debug Support**: Dump specific session memory for debugging
+1. **Session Management**: Each conversation is saved as a YAML file
+2. **Human-Readable**: Session files can be viewed and edited with any text editor
+3. **Session Recovery**: Resume previous sessions via CLI (`--resume`) or interactive (`/resume`)
+4. **Batch Persistence**: Memory is saved as a batch after task completion (efficient)
 
 ## How It Works
 
-Memory is **automatically saved** when:
-- `await ReActAgent.run()` completes a task
-- `await PlanExecuteAgent.run()` completes a task
+Memory is **automatically saved** when `await agent.run()` completes a task.
 
 You can also **manually save** by calling:
 ```python
-await manager.save_memory()  # Saves current state to database
+await manager.save_memory()  # Saves current state to YAML
 ```
 
-This batch-save approach is more efficient than saving after every message.
+### Directory Structure
+
+```
+.aloop/sessions/
+├── .index.yaml                          # UUID → directory mapping (auto-managed)
+├── 2025-01-31_a1b2c3d4/
+│   └── session.yaml                     # Session data
+├── 2025-01-31_e5f6g7h8/
+│   └── session.yaml
+└── ...
+```
+
+### Session YAML Format
+
+```yaml
+id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+created_at: "2025-01-31T14:30:00"
+updated_at: "2025-01-31T15:45:00"
+
+system_messages:
+  - role: system
+    content: |
+      You are a helpful assistant.
+
+messages:
+  - role: user
+    content: "Hello"
+  - role: assistant
+    content: null
+    tool_calls:
+      - id: call_abc123
+        type: function
+        function:
+          name: calculator
+          arguments: '{"expression": "2+2"}'
+  - role: tool
+    content: "4"
+    tool_call_id: call_abc123
+    name: calculator
+```
 
 ## Quick Start
 
@@ -28,79 +65,62 @@ This batch-save approach is more efficient than saving after every message.
 
 ```python
 from agent import ReActAgent
-from memory import MemoryConfig
-from llm.anthropic import AnthropicLLM
 
-# Initialize
-llm = AnthropicLLM(api_key="your-key")
-config = MemoryConfig()
-
-# Create agent (with built-in memory persistence)
-agent = ReActAgent(
-    llm=llm,
-    tools=[],
-    memory_config=config
-)
-
-# Run task - memory is automatically saved when complete
+# Memory is automatically saved when agent.run() completes
 result = await agent.run("Your task here")
 
 print(f"Session ID: {agent.memory.session_id}")
 ```
 
-### 2. Manual Save (Without Agent)
+### 2. Resume a Previous Session
 
-```python
-from memory import MemoryConfig, MemoryManager
-from llm.anthropic import AnthropicLLM
-from llm.base import LLMMessage
+#### CLI
 
-# Initialize
-llm = AnthropicLLM(api_key="your-key")
-config = MemoryConfig()
+```bash
+# Resume the most recent session
+python main.py --resume --task "Continue the previous work"
 
-# Create manager
-manager = MemoryManager(
-    config=config,
-    llm=llm,
-    db_path="data/memory.db"  # Optional, defaults to "data/memory.db"
-)
-
-# Add messages
-await manager.add_message(LLMMessage(role="user", content="Hello"))
-await manager.add_message(LLMMessage(role="assistant", content="Hi!"))
-
-# Manually save to database
-await manager.save_memory()
-
-print(f"Session ID: {manager.session_id}")
+# Resume a specific session (full ID or prefix)
+python main.py --resume a1b2c3d4 --task "Continue from here"
 ```
 
-### 3. Restore Existing Session
+#### Interactive Mode
+
+```
+> /resume                    # List recent sessions
+> /resume a1b2c3d4           # Resume by ID prefix
+> /history                   # View all saved sessions
+```
+
+### 3. Manual Save (Without Agent)
 
 ```python
 from memory import MemoryManager
-from llm.anthropic import AnthropicLLM
-from llm.base import LLMMessage
+from llm.message_types import LLMMessage
 
-llm = AnthropicLLM(api_key="your-key")
+manager = MemoryManager(llm=llm)
 
-# Restore from session
+await manager.add_message(LLMMessage(role="user", content="Hello"))
+await manager.add_message(LLMMessage(role="assistant", content="Hi!"))
+
+await manager.save_memory()
+print(f"Session ID: {manager.session_id}")
+```
+
+### 4. Restore Existing Session
+
+```python
+from memory import MemoryManager
+
 session_id = "your-session-id-here"
-manager = await MemoryManager.from_session(
-    session_id=session_id,
-    llm=llm,
-    db_path="data/memory.db"
-)
+manager = await MemoryManager.from_session(session_id=session_id, llm=llm)
 
 # Continue conversation
 await manager.add_message(LLMMessage(role="user", content="Continue..."))
-
-# Save after adding messages
 await manager.save_memory()
 ```
 
-### 3. View Historical Sessions
+### 5. View Historical Sessions
 
 ```bash
 # List all sessions
@@ -114,323 +134,55 @@ python tools/session_manager.py stats <session_id>
 
 # Show session messages
 python tools/session_manager.py show <session_id> --messages
-```
 
-## Database Schema
-
-### Sessions Table
-Stores session basic information:
-- `id`: Session UUID
-- `created_at`: Creation timestamp
-- `updated_at`: Update timestamp
-- `metadata`: JSON metadata (description, tags, etc.)
-- `config`: MemoryConfig configuration
-- `current_tokens`: Current token count
-- `compression_count`: Number of compressions
-
-### Messages Table
-Stores conversation messages:
-- `id`: Message ID
-- `session_id`: Belongs to session
-- `role`: user/assistant
-- `content`: JSON format content
-- `tokens`: Token count
-- `timestamp`: Timestamp
-
-### System Messages Table
-Stores system prompts (separate table for easier management):
-- `id`: Message ID
-- `session_id`: Belongs to session
-- `content`: System prompt content
-- `timestamp`: Timestamp
-
-### Summaries Table
-Stores compressed summaries:
-- `id`: Summary ID
-- `session_id`: Belongs to session
-- `summary_text`: LLM generated summary
-- `preserved_messages`: JSON format preserved messages
-- `original_message_count`: Original message count
-- `original_tokens`: Original token count
-- `compressed_tokens`: Compressed token count
-- `compression_ratio`: Compression ratio
-- `metadata`: Compression strategy metadata
-- `created_at`: Creation timestamp
-
-## CLI Tool: session_manager.py
-
-### List Sessions
-```bash
-# List all sessions (default shows 50)
-python tools/session_manager.py list
-
-# Limit number
-python tools/session_manager.py list --limit 10
-
-# Use custom database
-python tools/session_manager.py --db path/to/db.db list
-```
-
-### Show Session Details
-```bash
-# Basic information
-python tools/session_manager.py show <session_id>
-
-# Include all messages
-python tools/session_manager.py show <session_id> --messages
-```
-
-Output example:
-```
-📋 Session: 52f72564-e9ff-47ce-9e12-a363dea86e27
-====================================================================================================
-
-🏷️  Metadata:
-  description: Demo session
-  project: memory_test
-
-📊 Statistics:
-  Created: 2026-01-13 15:25:35
-  Updated: 2026-01-13 15:25:35
-  System Messages: 1
-  Messages: 8
-  Summaries: 2
-  Compression Count: 2
-  Current Tokens: 0
-
-⚙️  Configuration:
-  Max Context: 100,000 tokens
-  Target Working Memory: 100 tokens
-  Compression Threshold: 40,000 tokens
-  Short-term Message Count: 5
-  Compression Ratio: 0.3
-
-📝 Summaries (2):
-  ...
-```
-
-### Show Statistics
-```bash
-python tools/session_manager.py stats <session_id>
-```
-
-Output example:
-```
-📊 Session Statistics: 52f72564-...
-================================================================================
-
-⏰ Timing:
-  Created: 2026-01-13 15:25:35
-  Updated: 2026-01-13 15:25:35
-
-📨 Messages:
-  System Messages: 1
-  Regular Messages: 8
-  Total Messages: 9
-
-🗜️  Compression:
-  Compressions: 2
-  Summaries: 2
-
-🎫 Tokens:
-  Current Tokens: 0
-  Message Tokens: 120
-  Original Tokens (pre-compression): 124
-  Compressed Tokens: 26
-  Token Savings: 98
-  Savings Percentage: 79.0%
-```
-
-### Delete Session
-```bash
-# Interactive deletion (requires confirmation)
+# Delete a session
 python tools/session_manager.py delete <session_id>
-
-# Direct deletion (skip confirmation)
-python tools/session_manager.py delete <session_id> --yes
 ```
 
-### Update Metadata
-```bash
-python tools/session_manager.py meta <session_id> description "My project"
-python tools/session_manager.py meta <session_id> tags "important,debug"
-```
+## Architecture
+
+Persistence is fully managed internally by `MemoryManager` using a YAML file backend. The store lifecycle is entirely owned by `MemoryManager` — external code should not create or pass in store instances.
 
 ## API Documentation
 
-### MemoryStore Class
+### MemoryManager
 
 ```python
-from memory.store import MemoryStore
+from memory import MemoryManager
 
-store = MemoryStore(db_path="data/memory.db")
-```
+# Create new session
+manager = MemoryManager(llm=llm)
 
-**Main Methods**:
+# Load from existing session
+manager = await MemoryManager.from_session(session_id="...", llm=llm)
 
-All methods below are awaitable.
-
-- `create_session(metadata=None, config=None)` → str
-  - Create new session
-  - Returns session ID
-
-- `save_message(session_id, message, tokens=0)`
-  - Save message
-
-- `save_summary(session_id, summary)`
-  - Save compressed summary
-
-- `load_session(session_id)` → Dict
-  - Load complete session data
-  - Returns dict containing messages, summaries, stats
-
-- `list_sessions(limit=50, offset=0)` → List[Dict]
-  - List sessions
-
-- `get_session_stats(session_id)` → Dict
-  - Get session statistics
-
-- `delete_session(session_id)` → bool
-  - Delete session
-
-### MemoryManager Persistence
-
-```python
-from memory import MemoryManager, MemoryConfig
-
-config = MemoryConfig()
-
-# Method 1: Create new session (persistence is automatic)
-manager = MemoryManager(
-    config=config,
-    llm=llm,
-    db_path="data/memory.db"  # Optional, defaults to "data/memory.db"
-)
-
-# Method 2: Load from existing session
-manager = await MemoryManager.from_session(
-    session_id="existing-id",
-    llm=llm,
-    db_path="data/memory.db"
-)
-```
-
-## Use Cases
-
-### Use Case 1: Debug Specific Conversation
-
-```python
-# 1. Record session_id when running agent
-manager = MemoryManager(config, llm)
-print(f"Session ID: {manager.session_id}")  # Save this ID
-
-# 2. After encountering issues, view session details
-python tools/session_manager.py show <session_id> --messages
-
-# 3. Reload session in code for debugging
-manager = await MemoryManager.from_session(session_id, llm)
-# Analyze memory state
-print(f"Summaries: {len(manager.summaries)}")
-print(f"Short-term: {manager.short_term.count()}")
-```
-
-### Use Case 2: Long-Running Conversations
-
-```python
-# Day 1: Create session (automatically persisted)
-manager = MemoryManager(config, llm)
-session_id = manager.session_id
-save_to_config("last_session_id", session_id)
-
-# Day 2: Continue conversation
-session_id = load_from_config("last_session_id")
-manager = await MemoryManager.from_session(session_id, llm)
-# Continue conversation...
-```
-
-### Use Case 3: A/B Testing Different Configs
-
-```python
-# Create two sessions with different configs
-config_a = MemoryConfig(compression_ratio=0.3)
-config_b = MemoryConfig(compression_ratio=0.5)
-
-session_a = await store.create_session(
-    metadata={"experiment": "config_a"},
-    config=config_a
-)
-session_b = await store.create_session(
-    metadata={"experiment": "config_b"},
-    config=config_b
-)
-
-# Run same conversation
-# ...
-
-# Compare statistics
-stats_a = await store.get_session_stats(session_a)
-stats_b = await store.get_session_stats(session_b)
-
-print(f"Config A token savings: {stats_a['token_savings']}")
-print(f"Config B token savings: {stats_b['token_savings']}")
+# Session discovery (class methods)
+sessions = await MemoryManager.list_sessions(limit=20)
+latest_id = await MemoryManager.find_latest_session()
+full_id = await MemoryManager.find_session_by_prefix("a1b2")
 ```
 
 ## Notes
 
-1. **Database Location**: Defaults to `data/memory.db`, ensure directory exists with write permissions
+1. **File Location**: Sessions are stored under `.aloop/sessions/`. The directory is created automatically.
 
-2. **Session ID Management**:
-   - Session ID is a UUID, should be saved properly
-   - Can add description in metadata for easier identification
+2. **Session ID**: Each session has a UUID. You can use the full ID or a unique prefix (e.g., first 8 characters) when resuming.
 
-3. **Performance Considerations**:
-   - SQLite is suitable for small to medium scale (<1000 sessions)
-   - For large scale scenarios, consider periodic cleanup of old sessions
+3. **Atomic Writes**: Session files are written atomically (write to `.tmp`, then `os.replace()`) to prevent corruption on crashes.
 
-4. **Metadata Recommendations**:
-   ```python
-   metadata = {
-       "description": "Customer support - Case #123",
-       "user_id": "user_456",
-       "tags": ["support", "billing"],
-       "created_by": "agent_v1.2"
-   }
-   ```
+4. **Index File**: `.aloop/sessions/.index.yaml` maps UUIDs to directory names for fast lookup. It is automatically rebuilt if missing.
 
-5. **Backup**: Regularly backup the `data/memory.db` file
+5. **Human Editing**: You can manually edit `session.yaml` files. Changes will be picked up on next load.
 
 ## Testing
 
-Run persistence-related tests:
-
 ```bash
-# Run all store tests
-pytest test/memory/test_store.py -v
+# Run all memory tests
+python -m pytest test/memory/ -v
 
-# Run demo
-python examples/memory_persistence_demo.py
+# Run YAML backend tests specifically
+python -m pytest test/memory/test_yaml_backend.py -v
+
+# Run serialization tests
+python -m pytest test/memory/test_serialization.py -v
 ```
-
-## FAQ
-
-**Q: How to find a conversation's session ID?**
-A: Use `python tools/session_manager.py list` to view all sessions, identify by created_at or metadata
-
-**Q: How to clean up old sessions?**
-A: Use `python tools/session_manager.py delete <session_id>` or directly delete the database file to start fresh
-
-**Q: Can I export session as JSON?**
-A: Yes, use the following in code:
-```python
-session_data = await store.load_session(session_id)
-import json
-with open("session.json", "w") as f:
-    json.dump(session_data, f, default=str, indent=2)
-```
-
-**Q: Does persistence affect performance?**
-A: SQLite writes are very fast (<1ms), almost no impact on conversation flow
-
-## More Examples
-
-See `examples/memory_persistence_demo.py` for complete working examples.

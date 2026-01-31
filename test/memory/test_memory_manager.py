@@ -51,7 +51,7 @@ class TestMemoryManagerBasics:
         assert manager.current_tokens > 0
 
     async def test_get_context_structure(self, mock_llm, simple_messages):
-        """Test context structure with system, summaries, and recent messages."""
+        """Test context structure with system and recent messages."""
         manager = MemoryManager(mock_llm)
 
         # Add system message

@@ -6,11 +6,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from config import Config
 from llm.content_utils import content_has_tool_calls
 from llm.message_types import LLMMessage
-from utils.runtime import get_db_path
 
 from .compressor import WorkingMemoryCompressor
 from .short_term import ShortTermMemory
-from .store import MemoryStore
 from .token_tracker import TokenTracker
 from .types import CompressedMemory, CompressionStrategy
 
@@ -21,30 +19,29 @@ if TYPE_CHECKING:
 
 
 class MemoryManager:
-    """Central memory management system with built-in persistence."""
+    """Central memory management system with built-in persistence.
+
+    The persistence store is fully owned by MemoryManager and should not
+    be created or passed in from outside.
+    """
 
     def __init__(
         self,
         llm: "LiteLLMAdapter",
-        store: Optional[MemoryStore] = None,
         session_id: Optional[str] = None,
-        db_path: Optional[str] = None,
     ):
         """Initialize memory manager.
 
         Args:
             llm: LLM instance for compression
-            store: Optional MemoryStore for persistence (if None, creates default store)
             session_id: Optional session ID (if resuming session)
-            db_path: Path to database file (default: .aloop/db/memory.db)
         """
         self.llm = llm
-        self._db_path = db_path if db_path is not None else get_db_path()
 
-        # Always create/use store for persistence
-        if store is None:
-            store = MemoryStore(db_path=db_path)
-        self.store = store
+        # Store is fully owned by MemoryManager
+        from .store import YamlFileMemoryStore
+
+        self._store = YamlFileMemoryStore()
 
         # Lazy session creation: only create when first message is added
         # If session_id is provided (resuming), use it immediately
@@ -60,7 +57,7 @@ class MemoryManager:
         self.compressor = WorkingMemoryCompressor(llm)
         self.token_tracker = TokenTracker()
 
-        # Storage for system messages (summaries are now stored as regular messages in short_term)
+        # Storage for system messages
         self.system_messages: List[LLMMessage] = []
 
         # State tracking
@@ -70,7 +67,6 @@ class MemoryManager:
         self.compression_count = 0
 
         # Optional callback to get current todo context for compression
-        # This allows injecting todo state into summaries without coupling to TodoList
         self._todo_context_provider: Optional[Callable[[], Optional[str]]] = None
 
     @classmethod
@@ -78,35 +74,25 @@ class MemoryManager:
         cls,
         session_id: str,
         llm: "LiteLLMAdapter",
-        store: Optional[MemoryStore] = None,
-        db_path: Optional[str] = None,
     ) -> "MemoryManager":
         """Load a MemoryManager from a saved session.
 
         Args:
             session_id: Session ID to load
             llm: LLM instance for compression
-            store: Optional MemoryStore instance (if None, creates default store)
-            db_path: Path to database file (default: .aloop/db/memory.db)
 
         Returns:
             MemoryManager instance with loaded state
         """
-        # Create store if not provided
-        if store is None:
-            store = MemoryStore(db_path=db_path if db_path is not None else get_db_path())
+        manager = cls(llm=llm, session_id=session_id)
 
         # Load session data
-        session_data = await store.load_session(session_id)
+        session_data = await manager._store.load_session(session_id)
         if not session_data:
             raise ValueError(f"Session {session_id} not found")
 
-        # Create manager (config is now read from Config class directly)
-        manager = cls(llm=llm, store=store, session_id=session_id)
-
         # Restore state
         manager.system_messages = session_data["system_messages"]
-        manager.compression_count = session_data["stats"]["compression_count"]
 
         # Add messages to short-term memory (including any summary messages)
         for msg in session_data["messages"]:
@@ -123,6 +109,48 @@ class MemoryManager:
 
         return manager
 
+    @staticmethod
+    async def list_sessions(limit: int = 50) -> List[Dict[str, Any]]:
+        """List saved sessions.
+
+        Args:
+            limit: Maximum number of sessions to return
+
+        Returns:
+            List of session summaries
+        """
+        from .store import YamlFileMemoryStore
+
+        store = YamlFileMemoryStore()
+        return await store.list_sessions(limit=limit)
+
+    @staticmethod
+    async def find_latest_session() -> Optional[str]:
+        """Find the most recently updated session ID.
+
+        Returns:
+            Session ID or None if no sessions exist
+        """
+        from .store import YamlFileMemoryStore
+
+        store = YamlFileMemoryStore()
+        return await store.find_latest_session()
+
+    @staticmethod
+    async def find_session_by_prefix(prefix: str) -> Optional[str]:
+        """Find a session by ID prefix.
+
+        Args:
+            prefix: Prefix of session UUID
+
+        Returns:
+            Full session ID or None
+        """
+        from .store import YamlFileMemoryStore
+
+        store = YamlFileMemoryStore()
+        return await store.find_session_by_prefix(prefix)
+
     async def _ensure_session(self) -> None:
         """Lazily create session when first needed.
 
@@ -134,7 +162,7 @@ class MemoryManager:
         """
         if not self._session_created:
             try:
-                self.session_id = await self.store.create_session()
+                self.session_id = await self._store.create_session()
                 self._session_created = True
                 logger.info(f"Created new session: {self.session_id}")
             except Exception as e:
@@ -454,7 +482,7 @@ class MemoryManager:
         Call this method after completing a task or at key checkpoints.
         """
         # Skip if no session was created (no messages were ever added)
-        if not self.store or not self._session_created or not self.session_id:
+        if not self._store or not self._session_created or not self.session_id:
             logger.debug("Skipping save_memory: no session created")
             return
 
@@ -465,11 +493,10 @@ class MemoryManager:
             logger.debug(f"Skipping save_memory: no messages to save for session {self.session_id}")
             return
 
-        await self.store.save_memory(
+        await self._store.save_memory(
             session_id=self.session_id,
             system_messages=self.system_messages,
             messages=messages,
-            summaries=[],  # Summaries are now part of messages
         )
         logger.info(f"Saved memory state for session {self.session_id}")
 

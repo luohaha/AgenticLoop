@@ -32,7 +32,6 @@ dependencies = [
     "trafilatura>=2.0.0",
     "lxml>=5.0.0",
     "aiofiles>=24.1.0",
-    "aiosqlite>=0.20.0",
     "litellm>=1.30.0",
     "PyYAML>=6.0",
     "tiktoken>=0.5.0",

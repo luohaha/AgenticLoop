@@ -53,11 +53,17 @@ class BaseAgent(ABC):
 
         self.tool_executor = ToolExecutor(tools)
 
-        # Initialize memory manager (uses Config directly)
+        # Memory manager is fully owned by the agent
         self.memory = MemoryManager(llm)
+        self.memory.set_todo_context_provider(self._get_todo_context)
 
-        # Set up todo context provider for memory compression
-        # This injects current todo state into summaries instead of preserving all todo messages
+    async def load_session(self, session_id: str) -> None:
+        """Load a saved session into the agent's memory.
+
+        Args:
+            session_id: Session ID to load
+        """
+        self.memory = await MemoryManager.from_session(session_id, self.llm)
         self.memory.set_todo_context_provider(self._get_todo_context)
 
     def _set_llm_adapter(self, llm: "LiteLLMAdapter") -> None:

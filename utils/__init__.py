@@ -5,7 +5,7 @@ from .logger import get_log_file_path, get_logger, setup_logger
 
 # Note: Runtime functions are NOT exported here to avoid circular imports.
 # Import directly from utils.runtime when needed:
-#   from utils.runtime import get_config_file, get_db_path, etc.
+#   from utils.runtime import get_config_file, get_sessions_dir, etc.
 
 __all__ = [
     "setup_logger",
