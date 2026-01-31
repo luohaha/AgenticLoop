@@ -1,19 +1,14 @@
 """Interactive multi-turn conversation mode for the agent."""
 
-import json
 import shlex
-from datetime import datetime
-from pathlib import Path
 
-import aiofiles
-import aiofiles.os
 from rich.table import Table
 
 from config import Config
 from llm import ModelManager
-from memory.store import MemoryStore
+from memory import MemoryManager
 from utils import get_log_file_path, terminal_ui
-from utils.runtime import get_exports_dir, get_history_file
+from utils.runtime import get_history_file
 from utils.tui.command_registry import CommandRegistry, CommandSpec
 from utils.tui.input_handler import InputHandler
 from utils.tui.model_ui import (
@@ -49,11 +44,10 @@ class InteractiveSession:
                 CommandSpec("help", "Show this help message"),
                 CommandSpec("clear", "Clear conversation memory and start fresh"),
                 CommandSpec("stats", "Show memory and token usage statistics"),
-                CommandSpec("history", "List saved conversation sessions"),
                 CommandSpec(
-                    "dump-memory",
-                    "Export a session's memory to a JSON file",
-                    args_hint="<id>",
+                    "resume",
+                    "List and resume a previous session",
+                    args_hint="[session_id]",
                 ),
                 CommandSpec("theme", "Toggle between dark and light theme"),
                 CommandSpec("verbose", "Toggle verbose thinking display"),
@@ -85,7 +79,7 @@ class InteractiveSession:
 
         # Initialize status bar
         self.status_bar = StatusBar(terminal_ui.console)
-        self.status_bar.update(mode="REACT")
+        self.status_bar.update(mode="LOOP")
 
     def _on_clear_screen(self) -> None:
         """Handle Ctrl+L - clear screen."""
@@ -147,111 +141,67 @@ class InteractiveSession:
         terminal_ui.print_memory_stats(stats)
         terminal_ui.console.print()
 
-    async def _show_history(self) -> None:
-        """Display all saved conversation sessions."""
-        try:
-            store = MemoryStore()
-            sessions = await store.list_sessions(limit=20)
-
-            if not sessions:
-                colors = Theme.get_colors()
-                terminal_ui.console.print(
-                    f"\n[{colors.warning}]No saved sessions found.[/{colors.warning}]"
-                )
-                terminal_ui.console.print(
-                    f"[{colors.text_muted}]Sessions will be saved when using persistent memory mode.[/{colors.text_muted}]\n"
-                )
-                return
-
-            colors = Theme.get_colors()
-            terminal_ui.console.print(
-                f"\n[bold {colors.primary}]Saved Sessions (showing most recent 20):[/bold {colors.primary}]\n"
-            )
-
-            table = Table(show_header=True, header_style=f"bold {colors.primary}", box=None)
-            table.add_column("ID", style=colors.text_muted, width=38)
-            table.add_column("Created", width=20)
-            table.add_column("Messages", justify="right", width=10)
-            table.add_column("Summaries", justify="right", width=10)
-
-            for session in sessions:
-                session_id = session["id"]
-                created = session["created_at"][:19]
-                msg_count = str(session["message_count"])
-                summary_count = str(session["summary_count"])
-                table.add_row(session_id, created, msg_count, summary_count)
-
-            terminal_ui.console.print(table)
-            terminal_ui.console.print()
-            terminal_ui.console.print(
-                f"[{colors.text_muted}]Tip: Use /dump-memory <session_id> to export a session's memory[/{colors.text_muted}]\n"
-            )
-
-        except Exception as e:
-            terminal_ui.print_error(str(e), title="Error loading sessions")
-
-    async def _dump_memory(self, session_id: str) -> None:
-        """Export a session's memory to a JSON file.
+    async def _resume_session(self, session_id: str | None = None) -> None:
+        """Resume a previous session.
 
         Args:
-            session_id: Session ID to export
+            session_id: Optional session ID or prefix. If None, shows recent sessions.
         """
+        colors = Theme.get_colors()
         try:
-            store = MemoryStore()
-            session_data = await store.load_session(session_id)
+            if session_id is None:
+                # Show recent sessions for user to pick
+                sessions = await MemoryManager.list_sessions(limit=10)
+                if not sessions:
+                    terminal_ui.console.print(
+                        f"\n[{colors.warning}]No saved sessions found.[/{colors.warning}]\n"
+                    )
+                    return
 
-            if not session_data:
-                terminal_ui.print_error(f"Session {session_id} not found")
+                terminal_ui.console.print(
+                    f"\n[bold {colors.primary}]Recent Sessions:[/bold {colors.primary}]\n"
+                )
+
+                table = Table(show_header=True, header_style=f"bold {colors.primary}", box=None)
+                table.add_column("#", style=colors.text_muted, width=4)
+                table.add_column("ID", style=colors.text_muted, width=38)
+                table.add_column("Updated", width=20)
+                table.add_column("Msgs", justify="right", width=6)
+                table.add_column("Preview", width=50)
+
+                for i, session in enumerate(sessions, 1):
+                    sid = session["id"]
+                    updated = session.get("updated_at", session.get("created_at", ""))[:19]
+                    msg_count = str(session["message_count"])
+                    preview = session.get("preview", "")[:50]
+                    table.add_row(str(i), sid, updated, msg_count, preview)
+
+                terminal_ui.console.print(table)
+                terminal_ui.console.print(
+                    f"\n[{colors.text_muted}]Usage: /resume <session_id or prefix>[/{colors.text_muted}]\n"
+                )
                 return
 
-            export_data = {
-                "session_id": session_id,
-                "exported_at": datetime.now().isoformat(),
-                "stats": session_data["stats"],
-                "system_messages": [msg.to_dict() for msg in session_data["system_messages"]],
-                "messages": [msg.to_dict() for msg in session_data["messages"]],
-                "summaries": [
-                    {
-                        "summary": s.summary,
-                        "original_message_count": s.original_message_count,
-                        "original_tokens": s.original_tokens,
-                        "compressed_tokens": s.compressed_tokens,
-                        "compression_ratio": s.compression_ratio,
-                        "token_savings": s.token_savings,
-                        "preserved_messages": [msg.to_dict() for msg in s.preserved_messages],
-                        "metadata": s.metadata,
-                    }
-                    for s in session_data["summaries"]
-                ],
-            }
+            # Resolve session ID (prefix match)
+            resolved_id = await MemoryManager.find_session_by_prefix(session_id)
+            if not resolved_id:
+                terminal_ui.print_error(f"Session '{session_id}' not found")
+                return
 
-            output_dir = Path(get_exports_dir())
-            await aiofiles.os.makedirs(str(output_dir), exist_ok=True)
+            # Load session via agent (agent owns memory lifecycle)
+            await self.agent.load_session(resolved_id)
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            short_id = session_id[:8]
-            filename = f"memory_dump_{short_id}_{timestamp}.json"
-            output_path = output_dir / filename
-
-            async with aiofiles.open(output_path, "w", encoding="utf-8") as f:
-                payload = json.dumps(export_data, indent=2, ensure_ascii=False, default=str)
-                await f.write(payload)
-
-            terminal_ui.print_success("Memory dumped successfully!")
-            colors = Theme.get_colors()
-            terminal_ui.console.print(
-                f"[{colors.text_muted}]Location:[/{colors.text_muted}] {output_path}"
+            msg_count = self.agent.memory.short_term.count()
+            terminal_ui.print_success(
+                f"Resumed session {resolved_id} ({msg_count} messages, "
+                f"{self.agent.memory.current_tokens} tokens)"
             )
-
-            terminal_ui.console.print(f"\n[bold {colors.primary}]Summary:[/bold {colors.primary}]")
-            terminal_ui.console.print(f"  Session ID: {session_id}")
-            terminal_ui.console.print(f"  Messages: {len(export_data['messages'])}")
-            terminal_ui.console.print(f"  System Messages: {len(export_data['system_messages'])}")
-            terminal_ui.console.print(f"  Summaries: {len(export_data['summaries'])}")
             terminal_ui.console.print()
 
+            self._update_status_bar()
+
         except Exception as e:
-            terminal_ui.print_error(str(e), title="Error dumping memory")
+            terminal_ui.print_error(str(e), title="Error resuming session")
 
     def _toggle_theme(self) -> None:
         """Toggle between dark and light theme."""
@@ -317,18 +267,9 @@ class InteractiveSession:
         elif command == "/stats":
             self._show_stats()
 
-        elif command == "/history":
-            await self._show_history()
-
-        elif command == "/dump-memory":
-            if len(command_parts) < 2:
-                terminal_ui.print_error("Please provide a session ID")
-                colors = Theme.get_colors()
-                terminal_ui.console.print(
-                    f"[{colors.text_muted}]Usage: /dump-memory <session_id>[/{colors.text_muted}]\n"
-                )
-            else:
-                await self._dump_memory(command_parts[1])
+        elif command == "/resume":
+            session_id = command_parts[1] if len(command_parts) >= 2 else None
+            await self._resume_session(session_id)
 
         elif command == "/theme":
             self._toggle_theme()

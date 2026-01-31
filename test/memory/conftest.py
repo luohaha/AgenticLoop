@@ -68,8 +68,14 @@ class MockLLM:
 
 
 @pytest.fixture
-def mock_llm():
-    """Create a mock LLM instance."""
+def mock_llm(tmp_path, monkeypatch):
+    """Create a mock LLM instance.
+
+    Also patches the default sessions dir to use a temp directory
+    so tests don't write to the real .aloop/sessions/.
+    """
+    sessions_dir = str(tmp_path / "sessions")
+    monkeypatch.setattr("memory.store.yaml_file_memory_store.get_sessions_dir", lambda: sessions_dir)
     return MockLLM()
 
 
