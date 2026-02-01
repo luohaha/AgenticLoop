@@ -78,7 +78,7 @@ Change impact reminders:
 - Config changes → update `docs/configuration.md`
 - Workflow scripts → update `AGENTS.md`, `docs/packaging.md`
 
-Run a quick smoke task (requires a configured provider in `.aloop/models.yaml`):
+Run a quick smoke task (requires a configured provider in `~/.aloop/models.yaml`):
 
 ```bash
 python main.py --task "Calculate 1+1"
@@ -147,7 +147,7 @@ Unified entrypoint: `./scripts/dev.sh format`
 
 ## Docs Pointers
 
-- Configuration & `.aloop/models.yaml`: `docs/configuration.md`
+- Configuration & `~/.aloop/models.yaml`: `docs/configuration.md`
 - Packaging & release checklist: `docs/packaging.md`
 - Extending tools/agents: `docs/extending.md`
 - Memory system: `docs/memory-management.md`
@@ -155,7 +155,7 @@ Unified entrypoint: `./scripts/dev.sh format`
 
 ## Safety & Secrets
 
-- Never commit `.aloop/config` or API keys.
+- Never commit `~/.aloop/config` or API keys.
 - Avoid running destructive shell commands; keep file edits scoped and reversible.
 - Publishing/releasing steps require explicit human intent (see `docs/packaging.md`).
 

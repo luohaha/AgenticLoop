@@ -26,7 +26,7 @@ cd aloop
 
 ### 1. Configure Models
 
-On first run, `.aloop/models.yaml` is created with a template. Edit it to add your provider and API key:
+On first run, `~/.aloop/models.yaml` is created with a template. Edit it to add your provider and API key:
 
 ```yaml
 models:
@@ -67,7 +67,7 @@ aloop --resume a1b2c3d4
 | `--task TEXT` | `-t` | Run a single task and exit |
 | `--model ID` | `-m` | LiteLLM model ID to use |
 | `--resume [ID]` | `-r` | Resume a session (`latest` if no ID given) |
-| `--verbose` | `-v` | Enable verbose logging to `.aloop/logs/` |
+| `--verbose` | `-v` | Enable verbose logging to `~/.aloop/logs/` |
 
 ## Interactive Commands
 
@@ -80,7 +80,7 @@ aloop --resume a1b2c3d4
 | `/stats` | Show memory and token usage statistics |
 | `/resume [id]` | List or resume a previous session |
 | `/model` | Pick a model (arrow keys + Enter) |
-| `/model edit` | Open `.aloop/models.yaml` in editor (auto-reload on save) |
+| `/model edit` | Open `~/.aloop/models.yaml` in editor (auto-reload on save) |
 | `/theme` | Toggle dark/light theme |
 | `/verbose` | Toggle thinking display |
 | `/compact` | Toggle compact output |
@@ -105,7 +105,7 @@ aloop --resume a1b2c3d4
 
 **Memory compression**: When context grows past a token threshold, older messages are compressed via LLM summarization. Recent messages are kept at full fidelity. Strategies: `sliding_window` (default), `selective`, `deletion`.
 
-**Session persistence**: Conversations are saved as YAML files under `.aloop/sessions/`. Resume with `--resume` or `/resume`.
+**Session persistence**: Conversations are saved as YAML files under `~/.aloop/sessions/`. Resume with `--resume` or `/resume`.
 
 ## Tools
 
@@ -136,7 +136,7 @@ aloop/
 ├── main.py                 # Entry point (argparse)
 ├── cli.py                  # CLI wrapper (`aloop` entry point)
 ├── interactive.py          # Interactive session, model setup, TUI
-├── config.py               # Runtime config (.aloop/config)
+├── config.py               # Runtime config (~/.aloop/config)
 ├── agent/
 │   ├── base.py             # BaseAgent (ReAct + Ralph loops)
 │   ├── agent.py            # LoopAgent
@@ -146,7 +146,7 @@ aloop/
 │   └── todo.py             # Todo list data structure
 ├── llm/
 │   ├── litellm_adapter.py  # LiteLLM adapter (100+ providers)
-│   ├── model_manager.py    # Model config from .aloop/models.yaml
+│   ├── model_manager.py    # Model config from ~/.aloop/models.yaml
 │   ├── retry.py            # Retry with exponential backoff
 │   └── message_types.py    # LLMMessage, LLMResponse, ToolCall
 ├── memory/
@@ -170,7 +170,7 @@ aloop/
 
 ## Configuration
 
-Runtime settings live in `.aloop/config` (auto-created). Key settings:
+Runtime settings live in `~/.aloop/config` (auto-created). Key settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
