@@ -1,4 +1,4 @@
-"""Example usage of ReAct Agent."""
+"""Example usage of LoopAgent."""
 
 import asyncio
 import os
@@ -7,7 +7,7 @@ import sys
 # Add parent directory to path to import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent.agent import ReActAgent
+from agent.agent import LoopAgent
 from llm import LiteLLMAdapter, ModelManager
 from tools.calculator import CalculatorTool
 from tools.file_ops import FileReadTool, FileWriteTool
@@ -15,9 +15,9 @@ from tools.web_search import WebSearchTool
 
 
 async def main():
-    """Run ReAct Agent example."""
+    """Run LoopAgent example."""
     print("=" * 60)
-    print("ReAct Agent Example")
+    print("LoopAgent Example")
     print("=" * 60)
 
     mm = ModelManager()
@@ -35,7 +35,7 @@ async def main():
     )
 
     # Initialize agent with tools
-    agent = ReActAgent(
+    agent = LoopAgent(
         llm=llm,
         tools=[
             CalculatorTool(),

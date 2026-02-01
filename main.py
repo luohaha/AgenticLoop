@@ -6,7 +6,7 @@ import warnings
 
 from rich.console import Console
 
-from agent.agent import ReActAgent
+from agent.agent import LoopAgent
 from config import Config
 from interactive import run_interactive_mode, run_model_setup_mode
 from llm import LiteLLMAdapter, ModelManager
@@ -36,7 +36,7 @@ def create_agent(model_id: str | None = None):
         model_id: Optional LiteLLM model ID to use (defaults to current/default)
 
     Returns:
-        Configured ReActAgent instance with all tools
+        Configured LoopAgent instance with all tools
     """
     # Initialize background task manager (shared between shell tools)
     task_manager = BackgroundTaskManager.get_instance()
@@ -96,7 +96,7 @@ def create_agent(model_id: str | None = None):
         timeout=current_profile.timeout,
     )
 
-    agent = ReActAgent(
+    agent = LoopAgent(
         llm=llm,
         tools=tools,
         max_iterations=Config.MAX_ITERATIONS,

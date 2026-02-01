@@ -215,10 +215,10 @@ async def test_ralph_loop_injects_feedback_into_messages(mock_agent):
 
 @pytest.mark.asyncio
 async def test_run_dispatches_to_ralph_loop():
-    """ReActAgent.run() always uses _ralph_loop."""
-    from agent.agent import ReActAgent
+    """LoopAgent.run() always uses _ralph_loop."""
+    from agent.agent import LoopAgent
 
-    agent = object.__new__(ReActAgent)
+    agent = object.__new__(LoopAgent)
     agent.llm = MagicMock()
     agent.memory = MagicMock()
     agent.memory.system_messages = ["sys"]

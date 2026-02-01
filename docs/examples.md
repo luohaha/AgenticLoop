@@ -119,7 +119,7 @@ aloop --task "List all classes and functions in src/"
 
 ```python
 import asyncio
-from agent.agent import ReActAgent
+from agent.agent import LoopAgent
 from llm import LiteLLMAdapter, ModelManager
 from tools import CalculatorTool, FileReadTool
 
@@ -135,7 +135,7 @@ async def main():
         api_base=profile.api_base,
     )
 
-    agent = ReActAgent(
+    agent = LoopAgent(
         llm=llm,
         max_iterations=15,
         tools=[CalculatorTool(), FileReadTool()],

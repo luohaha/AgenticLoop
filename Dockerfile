@@ -31,4 +31,4 @@ CMD ["--help"]
 
 # Usage:
 # Build: docker build -t AgenticLoop .
-# Run: docker run -it --rm -e ANTHROPIC_API_KEY=your_key AgenticLoop --mode react --task "Hello"
+# Run: docker run -it --rm -e ANTHROPIC_API_KEY=your_key AgenticLoop --task "Hello"

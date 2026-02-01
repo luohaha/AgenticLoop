@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from agent.agent import ReActAgent
+from agent.agent import LoopAgent
 from llm import LiteLLMAdapter, ModelManager
 from tools.file_ops import FileReadTool, FileWriteTool
 from tools.smart_edit import SmartEditTool
@@ -59,7 +59,7 @@ def test_smart_edit_in_agent():
             SmartEditTool(),
         ]
 
-        agent = ReActAgent(llm=llm, tools=tools, max_iterations=5)
+        agent = LoopAgent(llm=llm, tools=tools, max_iterations=5)
 
         # Task: use smart_edit to add a comment
         task = f"""Use the smart_edit tool to add a comment '# computed sum' after 'result = x + y' in {temp_path}.

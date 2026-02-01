@@ -52,8 +52,8 @@ def helper_function(x, y):
         '''"""Agent implementation."""
 from base import BaseAgent, transform_task
 
-class ReActAgent(BaseAgent):
-    """ReAct agent implementation."""
+class LoopAgent(BaseAgent):
+    """Loop agent implementation."""
 
     def __init__(self, name: str, max_iter: int = 10):
         super().__init__(name)
@@ -158,10 +158,10 @@ class TestFindClass:
     async def test_find_subclass(self, tool, sample_python_files):
         """Test finding a subclass shows inheritance."""
         result = await tool.execute(
-            target="ReActAgent", search_type="find_class", path=str(sample_python_files)
+            target="LoopAgent", search_type="find_class", path=str(sample_python_files)
         )
 
-        assert "ReActAgent" in result
+        assert "LoopAgent" in result
         assert "BaseAgent" in result  # Should show base class
         assert "agent.py" in result
 
@@ -310,7 +310,7 @@ class TestRealWorldScenarios:
         )
 
         assert "__init__" in result
-        assert "Found 2 function(s)" in result  # BaseAgent and ReActAgent
+        assert "Found 2 function(s)" in result  # BaseAgent and LoopAgent
 
     async def test_private_methods(self, tool, sample_python_files):
         """Test finding private methods."""

@@ -49,7 +49,7 @@ Settings live in `.aloop/config` (KEY=VALUE format, auto-created with defaults).
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `MAX_ITERATIONS` | `1000` | Maximum ReAct loop iterations |
+| `MAX_ITERATIONS` | `1000` | Maximum agent loop iterations |
 | `TOOL_TIMEOUT` | `600` | Tool execution timeout in seconds |
 | `RALPH_LOOP_MAX_ITERATIONS` | `3` | Max Ralph verification attempts |
 

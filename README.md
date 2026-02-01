@@ -8,9 +8,12 @@
 ╚═╝  ╚═╝╚══════╝ ╚═════╝  ╚═════╝ ╚═╝
 </pre>
 
-**General-purpose AI agent with ReAct reasoning, tool use, and memory management.**
+**One loop is all you need.**
 
-Supports 100+ LLM providers via LiteLLM.
+aloop is an AI agent built on a single, unified loop. Planning, parallel sub-agents,
+self-verification — everything folds into the same loop, chosen autonomously by the
+agent itself, not by a hardcoded workflow. Simple architecture, emergent capability.
+
 
 </div>
 
@@ -101,9 +104,9 @@ aloop --resume a1b2c3d4
 
 ## How It Works
 
-**ReAct loop**: The agent follows a Think-Act-Observe cycle. It reasons about the task, selects a tool, observes the result, and repeats until it has an answer.
+**Agent loop**: The agent follows a Think-Act-Observe cycle. It reasons about the task, selects a tool, observes the result, and repeats until it has an answer. Planning, sub-agent dispatch, and tool use all happen inside this single loop.
 
-**Ralph verification**: For single tasks (`--task`), an outer loop verifies the agent's answer against the original task. If incomplete, feedback is injected and the ReAct loop re-enters. Configurable via `RALPH_LOOP_MAX_ITERATIONS` (default: 3).
+**Ralph verification**: For single tasks (`--task`), an outer loop verifies the agent's answer against the original task. If incomplete, feedback is injected and the agent loop re-enters. Configurable via `RALPH_LOOP_MAX_ITERATIONS` (default: 3).
 
 **Memory compression**: When context grows past a token threshold, older messages are compressed via LLM summarization. Recent messages are kept at full fidelity. Strategies: `sliding_window` (default), `selective`, `deletion`.
 
@@ -141,7 +144,7 @@ AgenticLoop/
 ├── config.py               # Runtime config (.aloop/config)
 ├── agent/
 │   ├── base.py             # BaseAgent (ReAct + Ralph loops)
-│   ├── agent.py            # ReActAgent
+│   ├── agent.py            # LoopAgent
 │   ├── verification.py     # LLMVerifier for Ralph loop
 │   ├── context.py          # Context injection (cwd, platform, date)
 │   ├── tool_executor.py    # Tool execution engine

@@ -1,4 +1,4 @@
-"""Example usage of WebFetchTool with ReAct Agent."""
+"""Example usage of WebFetchTool with LoopAgent."""
 
 import asyncio
 import os
@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent.agent import ReActAgent
+from agent.agent import LoopAgent
 from llm import LiteLLMAdapter, ModelManager
 from tools.web_fetch import WebFetchTool
 
@@ -31,7 +31,7 @@ async def main():
         timeout=profile.timeout,
     )
 
-    agent = ReActAgent(
+    agent = LoopAgent(
         llm=llm,
         tools=[WebFetchTool()],
         max_iterations=8,

@@ -66,7 +66,7 @@ tools = [
 
 ## Creating Agents
 
-Agents inherit from `BaseAgent`. The only built-in agent is `ReActAgent`.
+Agents inherit from `BaseAgent`. The only built-in agent is `LoopAgent`.
 
 ```python
 # agent/my_agent.py
@@ -99,7 +99,7 @@ class MyAgent(BaseAgent):
         return "Max iterations reached"
 ```
 
-`BaseAgent` provides `_react_loop()` and `_ralph_loop()` methods. `ReActAgent.run()` calls `_ralph_loop()` for task mode (with verification) and `_react_loop()` for interactive mode.
+`BaseAgent` provides `_react_loop()` and `_ralph_loop()` methods. `LoopAgent.run()` calls `_ralph_loop()` for task mode (with verification) and `_react_loop()` for interactive mode.
 
 ## Adding LLM Providers
 

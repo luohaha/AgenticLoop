@@ -12,7 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "luohaha", email = "your.email@example.com"}
 ]
-keywords = ["ai", "agent", "llm", "claude", "gpt", "gemini", "react", "planning"]
+keywords = ["ai", "agent", "llm", "claude", "gpt", "gemini", "loop", "planning"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

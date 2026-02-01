@@ -1,4 +1,4 @@
-"""ReAct (Reasoning + Acting) agent implementation."""
+"""Loop agent implementation."""
 
 from config import Config
 from llm import LLMMessage
@@ -8,8 +8,8 @@ from .base import BaseAgent
 from .context import format_context_prompt
 
 
-class ReActAgent(BaseAgent):
-    """Agent using ReAct (Reasoning + Acting) pattern."""
+class LoopAgent(BaseAgent):
+    """Primary agent implementation — one unified loop for all tasks."""
 
     SYSTEM_PROMPT = """<role>
 You are a helpful AI assistant that uses tools to accomplish tasks efficiently and reliably.
