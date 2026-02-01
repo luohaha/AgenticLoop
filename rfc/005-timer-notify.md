@@ -5,7 +5,7 @@
 
 ## Problem Statement
 
-AgenticLoop currently has no way for an agent to schedule delayed or periodic tasks, nor to send notifications to users outside the terminal. This limits the agent to purely synchronous, on-demand interactions.
+aloop currently has no way for an agent to schedule delayed or periodic tasks, nor to send notifications to users outside the terminal. This limits the agent to purely synchronous, on-demand interactions.
 
 Two common use cases motivate this RFC:
 
@@ -49,7 +49,7 @@ Sends an email via the [Resend](https://resend.com) HTTP API. Uses `httpx` (alre
 
 **Configuration** (`.aloop/config`):
 - `RESEND_API_KEY`: Resend API key
-- `NOTIFY_EMAIL_FROM`: Sender address (e.g. `AgenticLoop <onboarding@resend.dev>`)
+- `NOTIFY_EMAIL_FROM`: Sender address (e.g. `aloop <onboarding@resend.dev>`)
 
 ## Alternatives Considered
 

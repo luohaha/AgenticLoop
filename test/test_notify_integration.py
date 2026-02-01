@@ -25,8 +25,8 @@ def notify_tool():
 async def test_send_real_email(notify_tool):
     result = await notify_tool.execute(
         recipient="luoyixin6688@gmail.com",
-        subject="AgenticLoop NotifyTool Test",
-        body="This is a test email sent from the AgenticLoop NotifyTool integration test.",
+        subject="aloop NotifyTool Test",
+        body="This is a test email sent from the aloop NotifyTool integration test.",
     )
     print(result)
     assert "sent successfully" in result

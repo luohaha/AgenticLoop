@@ -1,4 +1,4 @@
-"""TUI (Terminal User Interface) package for AgenticLoop.
+"""TUI (Terminal User Interface) package for aloop.
 
 This package provides a modern, professional terminal UI with:
 - Theme support (dark/light modes)

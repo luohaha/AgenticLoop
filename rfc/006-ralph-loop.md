@@ -10,7 +10,7 @@ Add an outer verification loop ("Ralph Loop") that checks whether the inner ReAc
 
 ## Problem Statement
 
-Task completion in AgenticLoop is entirely LLM-driven: the inner ReAct loop terminates when the model emits `StopReason.STOP`. This means the model alone decides when it is "done," with no independent check that the answer is correct or complete. For complex tasks the model may stop prematurely — producing a partial answer, missing a subtask, or satisfying a surface reading of the prompt while missing deeper intent.
+Task completion in aloop is entirely LLM-driven: the inner ReAct loop terminates when the model emits `StopReason.STOP`. This means the model alone decides when it is "done," with no independent check that the answer is correct or complete. For complex tasks the model may stop prematurely — producing a partial answer, missing a subtask, or satisfying a surface reading of the prompt while missing deeper intent.
 
 An outer loop that independently verifies completion and injects corrective feedback addresses this gap without adding complexity to the inner loop itself.
 

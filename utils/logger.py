@@ -59,7 +59,7 @@ def setup_logger(
     log_path.mkdir(exist_ok=True, parents=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_path / f"agentic_loop_{timestamp}.log"
+    log_file = log_path / f"aloop_{timestamp}.log"
     _log_file_path = str(log_file)
 
     file_handler = logging.FileHandler(log_file, encoding="utf-8")

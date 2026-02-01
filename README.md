@@ -17,8 +17,8 @@ agent itself, not by a hardcoded workflow. Simple architecture, emergent capabil
 Prerequisites: Python 3.12+ and [uv](https://github.com/astral-sh/uv).
 
 ```bash
-git clone https://github.com/luohaha/AgenticLoop.git
-cd AgenticLoop
+git clone https://github.com/luohaha/aloop.git
+cd aloop
 ./scripts/bootstrap.sh
 ```
 
@@ -132,7 +132,7 @@ aloop --resume a1b2c3d4
 ## Project Structure
 
 ```
-AgenticLoop/
+aloop/
 ├── main.py                 # Entry point (argparse)
 ├── cli.py                  # CLI wrapper (`aloop` entry point)
 ├── interactive.py          # Interactive session, model setup, TUI

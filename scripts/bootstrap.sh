@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Bootstrap a local dev environment for AgenticLoop.
+Bootstrap a local dev environment for aloop.
 
 Creates/uses `.venv` and installs `.[dev]`.
 

@@ -1,4 +1,4 @@
-"""Runtime directory management for AgenticLoop.
+"""Runtime directory management for aloop.
 
 All runtime data is stored under .aloop/ directory:
 - config: Configuration file (created by config.py on first import)

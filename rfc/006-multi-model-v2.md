@@ -4,7 +4,7 @@ Status: **Completed** (2026-01-30)
 
 ## Problem Statement
 
-AgenticLoop historically behaves like a single-model app. Users need to:
+aloop historically behaves like a single-model app. Users need to:
 - Configure multiple models (different providers / endpoints / keys)
 - Switch the active model in interactive mode
 - Keep secrets out of git by default

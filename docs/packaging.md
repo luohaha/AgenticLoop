@@ -16,11 +16,11 @@ aloop --help
 ./scripts/dev.sh build
 ```
 
-Creates `dist/agentic_loop-*.whl` and `dist/agentic_loop-*.tar.gz`.
+Creates `dist/aloop-*.whl` and `dist/aloop-*.tar.gz`.
 
 Test locally:
 ```bash
-pip install dist/agentic_loop-*.whl
+pip install dist/aloop-*.whl
 aloop --task "Calculate 1+1"
 ```
 
@@ -30,7 +30,7 @@ aloop --task "Calculate 1+1"
 
 ```bash
 ./scripts/dev.sh publish --test
-pip install --index-url https://test.pypi.org/simple/ AgenticLoop
+pip install --index-url https://test.pypi.org/simple/ aloop
 ```
 
 ### Production PyPI
@@ -46,7 +46,7 @@ pip install --index-url https://test.pypi.org/simple/ AgenticLoop
 ### Build
 
 ```bash
-docker build -t agentic-loop:latest .
+docker build -t aloop:latest .
 ```
 
 ### Run
@@ -57,21 +57,21 @@ Mount `.aloop/` to provide model configuration:
 # Interactive mode
 docker run -it --rm \
   -v $(pwd)/.aloop:/app/.aloop \
-  agentic-loop
+  aloop
 
 # Single task
 docker run --rm \
   -v $(pwd)/.aloop:/app/.aloop \
-  agentic-loop --task "Calculate 1+1"
+  aloop --task "Calculate 1+1"
 ```
 
 ### Publish
 
 ```bash
-docker tag agentic-loop:latest yourusername/agentic-loop:0.1.0
-docker tag agentic-loop:latest yourusername/agentic-loop:latest
-docker push yourusername/agentic-loop:0.1.0
-docker push yourusername/agentic-loop:latest
+docker tag aloop:latest yourusername/aloop:0.1.0
+docker tag aloop:latest yourusername/aloop:latest
+docker push yourusername/aloop:0.1.0
+docker push yourusername/aloop:latest
 ```
 
 ## Release Checklist
@@ -89,5 +89,5 @@ docker push yourusername/agentic-loop:latest
 | Method | Command |
 |--------|---------|
 | Local dev | `./scripts/bootstrap.sh` |
-| Docker | `docker run agentic-loop --task "..."` |
-| From source | `pip install git+https://github.com/luohaha/AgenticLoop.git` |
+| Docker | `docker run aloop --task "..."` |
+| From source | `pip install git+https://github.com/luohaha/aloop.git` |

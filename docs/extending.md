@@ -1,4 +1,4 @@
-# Extending AgenticLoop
+# Extending aloop
 
 ## Adding Tools
 

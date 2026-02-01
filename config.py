@@ -10,7 +10,7 @@ _CONFIG_FILE = os.path.join(_RUNTIME_DIR, "config")
 
 # Default configuration template
 _DEFAULT_CONFIG = """\
-# AgenticLoop Configuration
+# aloop Configuration
 #
 # NOTE: Model configuration lives in `.aloop/models.yaml`.
 # This file controls non-model runtime settings only.

@@ -155,8 +155,7 @@ data/
 # Claude Code local rules/state (project-local)
 .claude/
 
-# Tool caches
-.AgenticLoop/
+# Tool caches (legacy; now under .aloop/cache)
 
 # Spyder project settings
 .spyderproject

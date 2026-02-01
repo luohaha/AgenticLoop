@@ -148,7 +148,7 @@ class CodeNavigatorTool(BaseTool):
     """Navigate code using AST analysis - fast and accurate, multi-language support."""
 
     def __init__(self):
-        self.cache_dir = Path(".AgenticLoop/cache")
+        self.cache_dir = Path(".aloop/cache")
         self.symbol_cache = {}  # {symbol_name: [(file, line, type, info)]}
         self.cache_loaded = False
         self._tree_sitter_available = HAS_TREE_SITTER
