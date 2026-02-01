@@ -48,7 +48,7 @@ Type your request and press Enter twice to submit. The agent will think, use too
 /help                    Show available commands
 /stats                   Show token usage and cost
 /model                   Pick a different model
-/model edit              Edit .aloop/models.yaml in your editor
+/model edit              Edit ~/.aloop/models.yaml in your editor
 /theme                   Toggle dark/light theme
 /verbose                 Toggle thinking display
 /compact                 Toggle compact output
@@ -127,7 +127,7 @@ async def main():
     mm = ModelManager()
     profile = mm.get_current_model()
     if not profile:
-        raise RuntimeError("No models configured. Edit .aloop/models.yaml.")
+        raise RuntimeError("No models configured. Edit ~/.aloop/models.yaml.")
 
     llm = LiteLLMAdapter(
         model=profile.model_id,
@@ -150,12 +150,12 @@ if __name__ == "__main__":
 
 ## Troubleshooting
 
-**Task not completing**: Increase `MAX_ITERATIONS` in `.aloop/config` (default: 1000).
+**Task not completing**: Increase `MAX_ITERATIONS` in `~/.aloop/config` (default: 1000).
 
-**High token usage**: Memory compression is enabled by default. Adjust `MEMORY_COMPRESSION_THRESHOLD` in `.aloop/config` to trigger compression earlier. Switch to a cheaper model with `--model` or `/model`.
+**High token usage**: Memory compression is enabled by default. Adjust `MEMORY_COMPRESSION_THRESHOLD` in `~/.aloop/config` to trigger compression earlier. Switch to a cheaper model with `--model` or `/model`.
 
-**API errors**: Verify your API key in `.aloop/models.yaml`. Test with a simple task: `aloop --task "Calculate 1+1"`.
+**API errors**: Verify your API key in `~/.aloop/models.yaml`. Test with a simple task: `aloop --task "Calculate 1+1"`.
 
-**Rate limits**: Automatic retry with exponential backoff is built in. Configure `RETRY_MAX_ATTEMPTS` in `.aloop/config` (default: 3).
+**Rate limits**: Automatic retry with exponential backoff is built in. Configure `RETRY_MAX_ATTEMPTS` in `~/.aloop/config` (default: 3).
 
-**Verbose output for debugging**: Use `--verbose` to log detailed info to `.aloop/logs/`.
+**Verbose output for debugging**: Use `--verbose` to log detailed info to `~/.aloop/logs/`.

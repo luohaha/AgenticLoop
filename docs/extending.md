@@ -103,7 +103,7 @@ class MyAgent(BaseAgent):
 
 ## Adding LLM Providers
 
-Most providers work out of the box via LiteLLM. Just add them to `.aloop/models.yaml`:
+Most providers work out of the box via LiteLLM. Just add them to `~/.aloop/models.yaml`:
 
 ```yaml
 models:
